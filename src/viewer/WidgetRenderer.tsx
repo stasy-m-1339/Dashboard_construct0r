@@ -41,7 +41,7 @@ export function WidgetRenderer({
     flexDirection: 'column',
     boxSizing: 'border-box',
     overflow: 'hidden',
-    backdropFilter: 'blur(8px)',
+    boxShadow: '0 1px 2px rgba(45, 42, 42, 0.04)',
   };
 
   if (widget.type === 'filter-select') {
@@ -68,7 +68,7 @@ export function WidgetRenderer({
         >
           <option value="">Все</option>
           {options.map((o) => (
-            <option key={o} value={o} style={{ color: '#111' }}>
+            <option key={o} value={o} style={{ color: theme.text }}>
               {o}
             </option>
           ))}

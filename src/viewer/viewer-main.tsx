@@ -1,7 +1,7 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { PublishedPayload } from '../shared/types';
-import { getTheme } from '../shared/themes';
+import { DEFAULT_THEME_ID, getTheme } from '../shared/themes';
 import { DashboardViewer } from './DashboardViewer';
 import './viewer.css';
 
@@ -16,12 +16,12 @@ const payload: PublishedPayload = window.__DASHBOARD_PAYLOAD__ || {
   dashboard: {
     id: 'empty',
     title: 'Пустой дашборд',
-    themeId: 'slate-teal',
+    themeId: DEFAULT_THEME_ID,
     tabs: [{ id: 't1', title: 'Вкладка', widgets: [] }],
     activeTabId: 't1',
   },
   datasets: [],
-  theme: getTheme('slate-teal'),
+  theme: getTheme(DEFAULT_THEME_ID),
 };
 
 const rootEl = document.getElementById('root');

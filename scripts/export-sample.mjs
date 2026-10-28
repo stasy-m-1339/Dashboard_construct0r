@@ -53,7 +53,7 @@ const payload = {
   dashboard: {
     id: 'demo',
     title: 'Демо: продажи',
-    themeId: 'slate-teal',
+    themeId: 'wide-light',
     activeTabId: 'tab1',
     tabs: [
       {
@@ -116,16 +116,17 @@ const payload = {
     },
   ],
   theme: {
-    id: 'slate-teal',
-    name: 'Сланец и бирюза',
-    background: 'linear-gradient(160deg, #0f172a 0%, #134e4a 55%, #0f172a 100%)',
-    surface: 'rgba(15, 23, 42, 0.72)',
-    text: '#f1f5f9',
-    muted: '#94a3b8',
-    accent: '#2dd4bf',
-    border: 'rgba(148, 163, 184, 0.28)',
-    chartPalette: ['#2dd4bf', '#38bdf8', '#a78bfa', '#fbbf24', '#fb7185', '#34d399'],
-    fontFamily: '"Segoe UI", "PT Sans", system-ui, sans-serif',
+    id: 'wide-light',
+    name: 'Wide Light',
+    background: '#F3F1F0',
+    surface: '#FFFFFF',
+    text: '#2D2A2A',
+    muted: '#685E5F',
+    accent: '#02665E',
+    border: '#DFDBDA',
+    chartPalette: ['#02665E', '#3F827B', '#47698B', '#bbac9b', '#b26164', '#643D57', '#98B4B0', '#6B8DA9'],
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
   },
 };
 

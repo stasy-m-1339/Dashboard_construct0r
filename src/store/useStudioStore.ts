@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { BLOCK_LIBRARY, createWidgetFromPreset, parseImportedBlock } from '../shared/blocks';
+import { DEFAULT_THEME_ID, normalizeThemeId } from '../shared/themes';
 import type {
   BlockPreset,
   DashboardTab,
@@ -27,7 +28,7 @@ function createDefaultProject(): StudioProject {
     dashboard: {
       id: uid('dash'),
       title: 'Новый дашборд',
-      themeId: 'slate-teal',
+      themeId: DEFAULT_THEME_ID,
       tabs: [tab],
       activeTabId: tab.id,
     },
@@ -91,7 +92,9 @@ export const useStudioStore = create<StudioState>()(
         set((s) => ({ dashboard: { ...s.dashboard, title } })),
 
       setThemeId: (themeId) =>
-        set((s) => ({ dashboard: { ...s.dashboard, themeId } })),
+        set((s) => ({
+          dashboard: { ...s.dashboard, themeId: normalizeThemeId(themeId) },
+        })),
 
       setActiveTab: (tabId) =>
         set((s) => ({ dashboard: { ...s.dashboard, activeTabId: tabId } })),
@@ -398,13 +401,27 @@ export const useStudioStore = create<StudioState>()(
     {
       name: 'dashboard-construct0r-studio',
       partialize: (s) => ({
-        dashboard: s.dashboard,
-        // Strip MSSQL passwords from persistence? Keep in localStorage for UX but never export.
+        dashboard: {
+          ...s.dashboard,
+          themeId: normalizeThemeId(s.dashboard.themeId),
+        },
+        // Keep secrets in localStorage for UX only — never export to HTML.
         sources: s.sources,
         pipelines: s.pipelines,
         datasets: s.datasets,
         customBlocks: s.customBlocks,
       }),
+      merge: (persisted, current) => {
+        const p = (persisted || {}) as Partial<StudioState>;
+        const merged = { ...current, ...p } as StudioState;
+        if (merged.dashboard) {
+          merged.dashboard = {
+            ...merged.dashboard,
+            themeId: normalizeThemeId(merged.dashboard.themeId),
+          };
+        }
+        return merged;
+      },
     },
   ),
 );

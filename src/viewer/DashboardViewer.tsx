@@ -68,13 +68,15 @@ export function DashboardViewer({ payload, editable = false, width = 1200 }: Pro
                 setFilters({});
               }}
               style={{
-                border: `1px solid ${theme.border}`,
-                background: t.id === tab?.id ? theme.accent : 'transparent',
-                color: t.id === tab?.id ? '#0f172a' : theme.text,
+                border: `1px solid ${t.id === tab?.id ? theme.accent : theme.border}`,
+                background: t.id === tab?.id ? theme.accent : theme.surface,
+                color: t.id === tab?.id ? '#ffffff' : theme.text,
                 borderRadius: 999,
                 padding: '6px 14px',
                 cursor: 'pointer',
                 fontSize: 13,
+                boxShadow:
+                  t.id === tab?.id ? '0 0 0 3px rgba(2,102,94,.25)' : 'none',
               }}
             >
               {t.title}

@@ -12,4 +12,11 @@ body,
 
 body {
   -webkit-font-smoothing: antialiased;
+  background: #f3f1f0;
+  color: #2d2a2a;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(2, 102, 94, 0.35);
+  outline-offset: 2px;
 }
