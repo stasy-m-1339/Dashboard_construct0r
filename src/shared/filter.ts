@@ -17,7 +17,7 @@ function rowMatchesFilters(
     const cell = row[col];
     const cellStr = cell == null ? '' : String(cell);
 
-    if (w.type === 'filter-select') {
+    if (w.type === 'filter-select' || w.type === 'filter-chips') {
       if (Array.isArray(value)) {
         if (value.length === 0) continue;
         if (!value.map(String).includes(cellStr)) return false;

@@ -5,6 +5,7 @@ import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useStudioStore } from '../store/useStudioStore';
 import { getTheme } from '../shared/themes';
+import { buildWidgetDataTsv } from '../shared/copyWidgetData';
 import { WidgetRenderer } from '../viewer/WidgetRenderer';
 import { FiltersPanel, partitionFilterWidgets } from '../viewer/FiltersPanel';
 import type { FilterState } from '../shared/types';
@@ -70,17 +71,14 @@ export function GridEditor() {
 
   const copyWidget = async (widgetId: string) => {
     const w = tab?.widgets.find((x) => x.id === widgetId);
-    if (!w) return;
-    const payload = {
-      id: `copy-${w.type}`,
-      type: w.type,
-      title: w.title,
-      description: `Копия: ${w.title}`,
-      defaultBinding: { ...w.binding, datasetId: undefined },
-      defaultLayout: { w: w.layout.w, h: w.layout.h },
-    };
+    if (!w || !tab) return;
+    const tsv = buildWidgetDataTsv(w, tab.widgets, datasets, filters);
+    if (!tsv.trim()) {
+      setLastError('Нет данных для копирования. Проверьте датасет и фильтры.');
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      await navigator.clipboard.writeText(tsv);
       setCopyFlash(widgetId);
       window.setTimeout(() => setCopyFlash(null), 1200);
     } catch {
@@ -162,8 +160,8 @@ export function GridEditor() {
                           <button
                             type="button"
                             className="icon-btn"
-                            title="Скопировать в буфер"
-                            aria-label="Скопировать в буфер"
+                            title="Скопировать данные"
+                            aria-label="Скопировать данные"
                             onClick={(e) => {
                               e.stopPropagation();
                               void copyWidget(w.id);
