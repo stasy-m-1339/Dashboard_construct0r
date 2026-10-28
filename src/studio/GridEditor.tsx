@@ -171,9 +171,22 @@ function PropertiesInline({
           ))}
         </select>
       </label>
-      {['kpi', 'bar', 'line', 'pie'].includes(widget.type) && (
+      {[
+        'kpi',
+        'kpi-delta',
+        'bar',
+        'stacked-bar',
+        'hbar',
+        'line',
+        'area',
+        'combo',
+        'pie',
+        'donut',
+        'waterfall',
+        'top-list',
+      ].includes(widget.type) && (
         <>
-          {widget.type !== 'kpi' && (
+          {!['kpi', 'kpi-delta'].includes(widget.type) && (
             <label>
               Категория
               <select
@@ -209,7 +222,124 @@ function PropertiesInline({
           </label>
         </>
       )}
-      {(widget.type === 'filter-select' || widget.type === 'filter-date') && (
+      {(widget.type === 'kpi-delta' ||
+        widget.type === 'combo' ||
+        widget.type === 'waterfall') && (
+        <label>
+          {widget.type === 'combo' ? 'Линия (план)' : 'Сравнение / база'}
+          <select
+            value={
+              widget.type === 'combo'
+                ? widget.binding.lineColumn || widget.binding.compareColumn || ''
+                : widget.binding.compareColumn || ''
+            }
+            onChange={(e) =>
+              updateWidget(widget.id, {
+                binding:
+                  widget.type === 'combo'
+                    ? { lineColumn: e.target.value }
+                    : { compareColumn: e.target.value },
+              })
+            }
+          >
+            <option value="">—</option>
+            {cols.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {widget.type === 'stacked-bar' && (
+        <label>
+          Серии (колонки через запятую)
+          <input
+            value={(widget.binding.seriesColumns || []).join(', ')}
+            onChange={(e) =>
+              updateWidget(widget.id, {
+                binding: {
+                  seriesColumns: e.target.value
+                    .split(',')
+                    .map((x) => x.trim())
+                    .filter(Boolean),
+                },
+              })
+            }
+          />
+        </label>
+      )}
+      {(widget.type === 'top-list' || widget.type === 'hbar') && (
+        <label>
+          Макс. пунктов
+          <input
+            type="number"
+            min={3}
+            max={30}
+            value={widget.binding.maxItems || (widget.type === 'top-list' ? 5 : 12)}
+            onChange={(e) =>
+              updateWidget(widget.id, {
+                binding: { maxItems: Number(e.target.value) || 5 },
+              })
+            }
+          />
+        </label>
+      )}
+      {widget.type === 'matrix' && (
+        <>
+          <label>
+            Строки
+            <select
+              value={widget.binding.rowColumn || ''}
+              onChange={(e) =>
+                updateWidget(widget.id, { binding: { rowColumn: e.target.value } })
+              }
+            >
+              <option value="">—</option>
+              {cols.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Колонки
+            <select
+              value={widget.binding.colColumn || ''}
+              onChange={(e) =>
+                updateWidget(widget.id, { binding: { colColumn: e.target.value } })
+              }
+            >
+              <option value="">—</option>
+              {cols.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Значение
+            <select
+              value={widget.binding.valueColumn || ''}
+              onChange={(e) =>
+                updateWidget(widget.id, { binding: { valueColumn: e.target.value } })
+              }
+            >
+              <option value="">—</option>
+              {cols.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      )}
+      {(widget.type === 'filter-select' ||
+        widget.type === 'filter-date' ||
+        widget.type === 'filter-chips') && (
         <label>
           Колонка фильтра
           <select

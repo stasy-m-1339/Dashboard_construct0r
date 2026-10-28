@@ -218,6 +218,12 @@
   color: var(--muted);
 }
 
+.block-item .block-id {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 10px;
+  color: #a39c9d;
+}
+
 .paste-area,
 .panel input,
 .panel select,

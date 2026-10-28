@@ -92,3 +92,73 @@ export function groupSum(
   }
   return Array.from(map.entries()).map(([name, value]) => ({ name, value }));
 }
+
+export function groupMultiSum(
+  rows: DatasetRow[],
+  categoryColumn: string,
+  valueColumns: string[],
+): { name: string; values: Record<string, number> }[] {
+  const map = new Map<string, Record<string, number>>();
+  for (const row of rows) {
+    const key = String(row[categoryColumn] ?? '');
+    const bucket = map.get(key) ?? Object.fromEntries(valueColumns.map((c) => [c, 0]));
+    for (const c of valueColumns) {
+      const n = Number(row[c]);
+      bucket[c] = (bucket[c] ?? 0) + (Number.isNaN(n) ? 0 : n);
+    }
+    map.set(key, bucket);
+  }
+  return Array.from(map.entries()).map(([name, values]) => ({ name, values }));
+}
+
+export function topN(
+  series: { name: string; value: number }[],
+  n = 10,
+  byAbs = false,
+): { name: string; value: number }[] {
+  const sorted = [...series].sort((a, b) =>
+    byAbs ? Math.abs(b.value) - Math.abs(a.value) : b.value - a.value,
+  );
+  return sorted.slice(0, Math.max(1, n));
+}
+
+export function pivotSum(
+  rows: DatasetRow[],
+  rowColumn: string,
+  colColumn: string,
+  valueColumn: string,
+): { rows: string[]; cols: string[]; cells: Record<string, Record<string, number>> } {
+  const rowSet = new Set<string>();
+  const colSet = new Set<string>();
+  const cells: Record<string, Record<string, number>> = {};
+  for (const row of rows) {
+    const r = String(row[rowColumn] ?? '');
+    const c = String(row[colColumn] ?? '');
+    const n = Number(row[valueColumn]);
+    const add = Number.isNaN(n) ? 0 : n;
+    rowSet.add(r);
+    colSet.add(c);
+    if (!cells[r]) cells[r] = {};
+    cells[r][c] = (cells[r][c] ?? 0) + add;
+  }
+  return {
+    rows: Array.from(rowSet).sort((a, b) => a.localeCompare(b, 'ru')),
+    cols: Array.from(colSet).sort((a, b) => a.localeCompare(b, 'ru')),
+    cells,
+  };
+}
+
+export function formatValue(
+  value: number,
+  format?: string,
+): string {
+  if (format === 'pct') {
+    return `${(value * (Math.abs(value) <= 1 ? 100 : 1)).toLocaleString('ru-RU', {
+      maximumFractionDigits: 1,
+    })}%`;
+  }
+  if (format === 'money') {
+    return value.toLocaleString('ru-RU', { maximumFractionDigits: 0 });
+  }
+  return value.toLocaleString('ru-RU');
+}

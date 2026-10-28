@@ -1,11 +1,24 @@
 export type WidgetType =
   | 'kpi'
+  | 'kpi-delta'
   | 'bar'
+  | 'stacked-bar'
+  | 'hbar'
   | 'line'
+  | 'area'
+  | 'combo'
   | 'pie'
+  | 'donut'
+  | 'waterfall'
+  | 'top-list'
+  | 'matrix'
   | 'table'
   | 'filter-select'
+  | 'filter-chips'
   | 'filter-date';
+
+/** Visual tone from standalone dashboard (fact teal / plan sand). */
+export type WidgetTone = 'default' | 'fact' | 'plan' | 'insight';
 
 export type DatasetRow = Record<string, string | number | boolean | null>;
 
@@ -77,10 +90,22 @@ export interface WidgetBinding {
   valueColumn?: string;
   categoryColumn?: string;
   columns?: string[];
+  /** Compare / plan column (kpi-delta, combo, waterfall) */
+  compareColumn?: string;
+  /** Extra numeric series for stacked-bar / combo line */
+  seriesColumns?: string[];
+  lineColumn?: string;
+  /** Matrix pivot */
+  rowColumn?: string;
+  colColumn?: string;
+  /** Top-list / hbar limit */
+  maxItems?: number;
   /** For filters */
   filterColumn?: string;
   label?: string;
-  format?: string;
+  format?: 'number' | 'money' | 'pct' | string;
+  tone?: WidgetTone;
+  badge?: string;
 }
 
 export interface WidgetInstance {
