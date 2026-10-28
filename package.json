@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n api,web -c teal,cyan \"npm:dev:api\" \"npm:dev:web\"",
+    "dev": "concurrently -k -n api,web -c teal,cyan \"tsx server/index.ts\" \"vite\"",
     "dev:web": "vite",
     "dev:api": "tsx server/index.ts",
     "build:viewer": "vite build --config vite.viewer.config.ts",

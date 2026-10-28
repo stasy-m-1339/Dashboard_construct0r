@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import fs from 'node:fs';
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sql from 'mssql';
@@ -242,6 +243,32 @@ app.post('/api/export-html', (req, res) => {
 });
 
 const port = Number(process.env.PORT || 8787);
-app.listen(port, () => {
+
+// Use http.createServer explicitly. Express 5's app.listen() routes the
+// server "error" event into the listen callback; ignoring that argument
+// printed a false "started" message, then the process exited 0 (no open
+// handle) and concurrently -k killed Vite — common when :8787 is busy.
+const server = http.createServer(app);
+
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(
+      `Studio API: порт ${port} занят. Закройте другой процесс или задайте PORT=... и повторите npm run dev.`,
+    );
+  } else {
+    console.error('Studio API listen error:', err);
+  }
+  process.exit(1);
+});
+
+server.listen(port, () => {
   console.log(`Studio API http://localhost:${port}`);
 });
+
+function shutdown(signal: string) {
+  console.log(`Studio API: ${signal}, shutting down…`);
+  server.close(() => process.exit(0));
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
