@@ -140,6 +140,8 @@ export interface ThemeConfig {
   fontFamily: string;
   /** Card corner radius (px); flat/swiss often smaller */
   radius?: number;
+  /** Card border width (px); neo-brutalism uses thick borders */
+  borderWidth?: number;
   /** Card box-shadow; empty/none for flat & swiss */
   shadow?: string;
   /** Optional header/title accent bar (e.g. Tableau blue) */

@@ -335,6 +335,7 @@ export const THEMES: ThemeConfig[] = [
     ],
     fontFamily: '"Arial Black", "Helvetica Neue", Impact, Arial, sans-serif',
     radius: 0,
+    borderWidth: 3,
     shadow: '4px 4px 0 #0A0A0A',
   },
   {
@@ -423,6 +424,7 @@ export function themeToCssVars(theme: ThemeConfig): Record<string, string> {
     '--theme-border': theme.border,
     '--theme-font': theme.fontFamily,
     '--theme-radius': `${theme.radius ?? 10}px`,
+    '--theme-border-width': `${theme.borderWidth ?? 1}px`,
     '--theme-shadow': theme.shadow ?? '0 1px 2px rgba(45,42,42,0.04)',
     '--theme-header': theme.headerBg || theme.accent,
   };

@@ -36,20 +36,20 @@ function toneAccent(theme: ThemeConfig, tone?: WidgetTone): string {
 
 function cardStyleFor(theme: ThemeConfig, tone?: WidgetTone): CSSProperties {
   const radius = theme.radius ?? 10;
+  const bw = theme.borderWidth ?? 1;
   const shadow = theme.shadow ?? '0 1px 2px rgba(45, 42, 42, 0.04)';
   const headerBar = theme.headerBg;
-  const topBorder =
+  const topBw = Math.max(bw, tone === 'fact' || tone === 'plan' || headerBar ? 3 : bw);
+  const topColor =
     tone === 'fact'
-      ? `3px solid ${theme.accent}`
+      ? theme.accent
       : tone === 'plan'
-        ? '3px solid #bbac9b'
-        : headerBar
-          ? `3px solid ${headerBar}`
-          : `1px solid ${theme.border}`;
+        ? '#bbac9b'
+        : headerBar || theme.border;
   return {
     background: theme.surface,
-    border: `1px solid ${theme.border}`,
-    borderTop: topBorder,
+    border: `${bw}px solid ${theme.border}`,
+    borderTop: `${topBw}px solid ${topColor}`,
     borderRadius: radius,
     color: theme.text,
     height: '100%',
