@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStudioStore } from '../store/useStudioStore';
-import { getTheme } from '../shared/themes';
+import { resolveTheme } from '../shared/themes';
 import { downloadTextFile, exportHtml, fetchSampleCsv, refreshDatasets } from './api';
 import { LibraryModal, type LibraryKind } from './LibraryModal';
 
@@ -56,7 +56,7 @@ export function Toolbar() {
         version: 1,
         dashboard,
         datasets,
-        theme: getTheme(dashboard.themeId),
+        theme: resolveTheme(dashboard.themeId, dashboard.chartPaletteId),
       });
       const allWarnings = [...localWarnings, ...result.warnings];
       if (allWarnings.length) setLastError(allWarnings.join('\n'));

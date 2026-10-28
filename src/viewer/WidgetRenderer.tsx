@@ -35,16 +35,22 @@ function toneAccent(theme: ThemeConfig, tone?: WidgetTone): string {
 }
 
 function cardStyleFor(theme: ThemeConfig, tone?: WidgetTone): CSSProperties {
+  const radius = theme.radius ?? 10;
+  const shadow = theme.shadow ?? '0 1px 2px rgba(45, 42, 42, 0.04)';
+  const headerBar = theme.headerBg;
+  const topBorder =
+    tone === 'fact'
+      ? `3px solid ${theme.accent}`
+      : tone === 'plan'
+        ? '3px solid #bbac9b'
+        : headerBar
+          ? `3px solid ${headerBar}`
+          : `1px solid ${theme.border}`;
   return {
     background: theme.surface,
     border: `1px solid ${theme.border}`,
-    borderTop:
-      tone === 'fact'
-        ? `3px solid ${theme.accent}`
-        : tone === 'plan'
-          ? '3px solid #bbac9b'
-          : `1px solid ${theme.border}`,
-    borderRadius: 10,
+    borderTop: topBorder,
+    borderRadius: radius,
     color: theme.text,
     height: '100%',
     padding: '10px 12px',
@@ -52,7 +58,7 @@ function cardStyleFor(theme: ThemeConfig, tone?: WidgetTone): CSSProperties {
     flexDirection: 'column',
     boxSizing: 'border-box',
     overflow: 'hidden',
-    boxShadow: '0 1px 2px rgba(45, 42, 42, 0.04)',
+    boxShadow: shadow === 'none' ? 'none' : shadow,
     fontFamily: theme.fontFamily,
   };
 }

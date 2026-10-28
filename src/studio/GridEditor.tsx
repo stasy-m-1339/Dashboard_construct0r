@@ -4,7 +4,7 @@ import type { Layout } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import { useStudioStore } from '../store/useStudioStore';
-import { getTheme } from '../shared/themes';
+import { resolveTheme, themeToCssVars } from '../shared/themes';
 import { buildWidgetDataTsv } from '../shared/copyWidgetData';
 import { WidgetRenderer } from '../viewer/WidgetRenderer';
 import { FiltersPanel, partitionFilterWidgets } from '../viewer/FiltersPanel';
@@ -26,7 +26,8 @@ export function GridEditor() {
   const [copyFlash, setCopyFlash] = useState<string | null>(null);
 
   const tab = dashboard.tabs.find((t) => t.id === dashboard.activeTabId);
-  const theme = getTheme(dashboard.themeId);
+  const theme = resolveTheme(dashboard.themeId, dashboard.chartPaletteId);
+  const themeVars = themeToCssVars(theme);
   const showFiltersPanel = !!dashboard.showFiltersPanel;
   /** In preview (and when panel on): filters live in the rail; hide duplicates on grid. */
   const panelActive = showFiltersPanel;
@@ -118,6 +119,7 @@ export function GridEditor() {
                 background: theme.background,
                 color: theme.text,
                 fontFamily: theme.fontFamily,
+                ...themeVars,
               }}
             >
               <GridLayout

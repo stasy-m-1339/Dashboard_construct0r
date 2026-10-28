@@ -1,7 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { BLOCK_LIBRARY, createWidgetFromPreset, parseImportedBlock } from '../shared/blocks';
-import { DEFAULT_THEME_ID, normalizeThemeId } from '../shared/themes';
+import {
+  DEFAULT_THEME_ID,
+  getTheme,
+  normalizeChartPaletteId,
+  normalizeThemeId,
+} from '../shared/themes';
 import type {
   BlockPreset,
   DashboardTab,
@@ -51,6 +56,7 @@ interface StudioState extends StudioProject {
 
   setTitle: (title: string) => void;
   setThemeId: (themeId: string) => void;
+  setChartPaletteId: (paletteId: string | undefined) => void;
   setShowFiltersPanel: (v: boolean) => void;
   setFiltersPanelCollapsed: (v: boolean) => void;
   setViewportMode: (v: ViewportMode) => void;
@@ -101,8 +107,26 @@ export const useStudioStore = create<StudioState>()(
         set((s) => ({ dashboard: { ...s.dashboard, title } })),
 
       setThemeId: (themeId) =>
+        set((s) => {
+          const nextId = normalizeThemeId(themeId);
+          const preferred = getTheme(nextId).preferredPaletteId;
+          return {
+            dashboard: {
+              ...s.dashboard,
+              themeId: nextId,
+              // Tableau (etc.) syncs its preferred palette; other themes keep
+              // any independently chosen chartPaletteId.
+              ...(preferred ? { chartPaletteId: preferred } : {}),
+            },
+          };
+        }),
+
+      setChartPaletteId: (paletteId) =>
         set((s) => ({
-          dashboard: { ...s.dashboard, themeId: normalizeThemeId(themeId) },
+          dashboard: {
+            ...s.dashboard,
+            chartPaletteId: normalizeChartPaletteId(paletteId),
+          },
         })),
 
       setShowFiltersPanel: (showFiltersPanel) =>
@@ -421,6 +445,7 @@ export const useStudioStore = create<StudioState>()(
         dashboard: {
           ...s.dashboard,
           themeId: normalizeThemeId(s.dashboard.themeId),
+          chartPaletteId: normalizeChartPaletteId(s.dashboard.chartPaletteId),
         },
         // Keep secrets in localStorage for UX only — never export to HTML.
         sources: s.sources,
@@ -435,6 +460,7 @@ export const useStudioStore = create<StudioState>()(
           merged.dashboard = {
             ...merged.dashboard,
             themeId: normalizeThemeId(merged.dashboard.themeId),
+            chartPaletteId: normalizeChartPaletteId(merged.dashboard.chartPaletteId),
           };
         }
         return merged;

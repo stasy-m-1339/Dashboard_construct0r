@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { BLOCK_LIBRARY } from '../shared/blocks';
 import { getDashboardLibrary, getFilterLibrary } from '../shared/libraries';
-import { THEMES, BRAND } from '../shared/themes';
+import { THEMES, CHART_PALETTES, BRAND } from '../shared/themes';
 import { useStudioStore } from '../store/useStudioStore';
 import type { BlockPreset } from '../shared/types';
 
@@ -62,7 +62,9 @@ export function LibraryModal({ kind, onClose }: Props) {
   const datasets = useStudioStore((s) => s.datasets);
   const addWidgetFromLibrary = useStudioStore((s) => s.addWidgetFromLibrary);
   const setThemeId = useStudioStore((s) => s.setThemeId);
+  const setChartPaletteId = useStudioStore((s) => s.setChartPaletteId);
   const themeId = useStudioStore((s) => s.dashboard.themeId);
+  const chartPaletteId = useStudioStore((s) => s.dashboard.chartPaletteId);
   const setShowFiltersPanel = useStudioStore((s) => s.setShowFiltersPanel);
   const updateWidget = useStudioStore((s) => s.updateWidget);
   const [picked, setPicked] = useState<BlockPreset | null>(null);
@@ -143,32 +145,38 @@ export function LibraryModal({ kind, onClose }: Props) {
   };
 
   if (kind === 'styles') {
+    const themePreferred = THEMES.find((t) => t.id === themeId)?.preferredPaletteId;
+    const activePalette = chartPaletteId || themePreferred;
+
     return (
       <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-        <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-card styles-modal" onClick={(e) => e.stopPropagation()}>
           <div className="modal-head">
             <h2>{TITLES.styles}</h2>
             <button type="button" className="btn ghost" onClick={onClose}>
               Закрыть
             </button>
           </div>
-          <p className="hint">Выберите тему дашборда. По умолчанию — Wide Light.</p>
+          <p className="hint">
+            Тема оформления и отдельно палитра рядов графика. По умолчанию — Wide Light.
+          </p>
+
+          <h3 className="styles-section-title">Темы</h3>
           <div className="theme-grid">
             {THEMES.map((t) => (
               <button
                 key={t.id}
                 type="button"
                 className={`theme-card${themeId === t.id ? ' active' : ''}`}
-                onClick={() => {
-                  setThemeId(t.id);
-                  onClose();
-                }}
+                onClick={() => setThemeId(t.id)}
               >
                 <div
                   className="theme-swatch"
                   style={{
                     background: t.background,
                     borderColor: t.border,
+                    boxShadow: t.shadow && t.shadow !== 'none' ? t.shadow : undefined,
+                    borderRadius: t.radius ?? 8,
                   }}
                 >
                   <span style={{ background: t.accent }} />
@@ -176,11 +184,36 @@ export function LibraryModal({ kind, onClose }: Props) {
                   <span style={{ background: t.muted }} />
                 </div>
                 <strong>{t.name}</strong>
-                <span className="muted">{t.id}</span>
+                {t.description && <span className="theme-desc">{t.description}</span>}
               </button>
             ))}
           </div>
-          <div className="palette-strip">
+
+          <h3 className="styles-section-title">Палитры графиков</h3>
+          <p className="hint">
+            Задают цвета серий (и акцент). Можно выбрать независимо от темы; тема Tableau
+            подставляет Tableau 10.
+          </p>
+          <div className="theme-grid palette-grid">
+            {CHART_PALETTES.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={`theme-card${activePalette === p.id ? ' active' : ''}`}
+                onClick={() => setChartPaletteId(p.id)}
+              >
+                <div className="palette-swatch-row">
+                  {p.colors.slice(0, 10).map((c) => (
+                    <span key={c} style={{ background: c }} title={c} />
+                  ))}
+                </div>
+                <strong>{p.name}</strong>
+                {p.description && <span className="theme-desc">{p.description}</span>}
+              </button>
+            ))}
+          </div>
+
+          <div className="palette-strip" aria-hidden>
             <span style={{ background: BRAND.primary }} title="primary" />
             <span style={{ background: BRAND.teal700 }} title="teal" />
             <span style={{ background: BRAND.sand500 }} title="sand" />

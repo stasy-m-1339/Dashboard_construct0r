@@ -616,6 +616,21 @@
   font-size: 13px;
 }
 
+.modal-card.styles-modal {
+  max-width: 720px;
+  max-height: min(90vh, 820px);
+  overflow: auto;
+}
+
+.styles-section-title {
+  margin: 16px 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #685e5f;
+}
+
 .theme-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
@@ -655,6 +670,31 @@
   width: 14px;
   height: 14px;
   border-radius: 4px;
+}
+
+.theme-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #685e5f;
+}
+
+.palette-grid .theme-card {
+  min-height: 72px;
+}
+
+.palette-swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-height: 28px;
+  align-content: flex-start;
+}
+
+.palette-swatch-row span {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .palette-strip {

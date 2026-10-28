@@ -128,6 +128,8 @@ export interface DashboardTab {
 export interface ThemeConfig {
   id: string;
   name: string;
+  /** Short Russian blurb for Styles modal */
+  description?: string;
   background: string;
   surface: string;
   text: string;
@@ -136,12 +138,35 @@ export interface ThemeConfig {
   border: string;
   chartPalette: string[];
   fontFamily: string;
+  /** Card corner radius (px); flat/swiss often smaller */
+  radius?: number;
+  /** Card box-shadow; empty/none for flat & swiss */
+  shadow?: string;
+  /** Optional header/title accent bar (e.g. Tableau blue) */
+  headerBg?: string;
+  /** Suggested chart palette id when this theme is picked */
+  preferredPaletteId?: string;
+}
+
+/** Independent chart series palette (Styles modal presets). */
+export interface ChartPalettePreset {
+  id: string;
+  name: string;
+  description?: string;
+  colors: string[];
+  /** Optional accent to apply when palette is selected */
+  accentHint?: string;
 }
 
 export interface DashboardConfig {
   id: string;
   title: string;
   themeId: string;
+  /**
+   * Optional override for chart series colors (and accent hint).
+   * Independent of theme; Tableau theme prefers tableau-10.
+   */
+  chartPaletteId?: string;
   tabs: DashboardTab[];
   activeTabId: string;
   /** Soft-rail filters panel (~320px), like standalone dashboard */

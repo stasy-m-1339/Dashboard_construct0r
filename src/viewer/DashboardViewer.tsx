@@ -4,7 +4,7 @@ import type { Layout } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import type { FilterState, PublishedPayload } from '../shared/types';
-import { getTheme } from '../shared/themes';
+import { resolveTheme, themeToCssVars } from '../shared/themes';
 import { WidgetRenderer } from './WidgetRenderer';
 import { FiltersPanel, partitionFilterWidgets } from './FiltersPanel';
 
@@ -16,7 +16,10 @@ interface Props {
 }
 
 export function DashboardViewer({ payload, editable = false, width = 1200 }: Props) {
-  const theme = payload.theme || getTheme(payload.dashboard.themeId);
+  const theme =
+    payload.theme ||
+    resolveTheme(payload.dashboard.themeId, payload.dashboard.chartPaletteId);
+  const themeVars = themeToCssVars(theme);
   const [activeTabId, setActiveTabId] = useState(payload.dashboard.activeTabId);
   const [filters, setFilters] = useState<FilterState>({});
   const [panelCollapsed, setPanelCollapsed] = useState(
@@ -69,6 +72,7 @@ export function DashboardViewer({ payload, editable = false, width = 1200 }: Pro
         boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
+        ...themeVars,
       }}
     >
       <header

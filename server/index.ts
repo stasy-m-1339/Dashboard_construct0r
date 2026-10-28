@@ -14,7 +14,7 @@ import type {
   PublishedPayload,
   SourceMssql,
 } from '../src/shared/types.ts';
-import { getTheme } from '../src/shared/themes.ts';
+import { resolveTheme } from '../src/shared/themes.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -201,7 +201,9 @@ app.post('/api/export-html', (req, res) => {
         rows: d.rows,
         updatedAt: d.updatedAt,
       })),
-      theme: payload.theme || getTheme(payload.dashboard.themeId),
+      theme:
+        payload.theme ||
+        resolveTheme(payload.dashboard.themeId, payload.dashboard.chartPaletteId),
     };
 
     const size = JSON.stringify(safe).length;
