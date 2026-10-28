@@ -1,0 +1,205 @@
+import express from 'express';
+import cors from 'cors';
+import multer from 'multer';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import sql from 'mssql';
+import { parseCsvText, runPipelineOnRows } from '../src/shared/pipelineRunner.ts';
+import type {
+  DataSource,
+  Dataset,
+  Pipeline,
+  PublishedPayload,
+  SourceMssql,
+} from '../src/shared/types.ts';
+import { getTheme } from '../src/shared/themes.ts';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(__dirname, '..');
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '40mb' }));
+
+async function fetchSourceRows(
+  source: DataSource,
+  pipeline: Pipeline,
+): Promise<{ columns: string[]; rows: Dataset['rows'] }> {
+  if (source.type === 'csv') {
+    return parseCsvText(source.content);
+  }
+
+  const mssqlSource = source as SourceMssql;
+  const sqlStep = pipeline.steps.find((s) => s.type === 'sql');
+  if (!sqlStep || sqlStep.type !== 'sql' || !sqlStep.query.trim()) {
+    throw new Error(`Пайплайн «${pipeline.name}»: для MSSQL нужен шаг SQL с запросом`);
+  }
+
+  const pool = await sql.connect({
+    server: mssqlSource.server,
+    database: mssqlSource.database,
+    user: mssqlSource.user,
+    password: mssqlSource.password,
+    port: mssqlSource.port || 1433,
+    options: {
+      encrypt: mssqlSource.encrypt ?? false,
+      trustServerCertificate: mssqlSource.trustServerCertificate ?? true,
+    },
+    connectionTimeout: 15000,
+    requestTimeout: 60000,
+  });
+
+  try {
+    const result = await pool.request().query(sqlStep.query);
+    const rows = (result.recordset || []) as Record<string, unknown>[];
+    const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+    return {
+      columns,
+      rows: rows.map((r) => {
+        const out: Dataset['rows'][number] = {};
+        for (const c of columns) {
+          const v = r[c];
+          if (v instanceof Date) out[c] = v.toISOString().slice(0, 10);
+          else if (typeof v === 'bigint') out[c] = Number(v);
+          else out[c] = (v as string | number | boolean | null) ?? null;
+        }
+        return out;
+      }),
+    };
+  } finally {
+    await pool.close();
+  }
+}
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true });
+});
+
+app.get('/api/sample-csv', (_req, res) => {
+  const samplePath = path.join(root, 'samples', 'sales.csv');
+  const content = fs.readFileSync(samplePath, 'utf8');
+  res.type('text/csv').send(content);
+});
+
+app.post('/api/parse-csv', upload.single('file'), (req, res) => {
+  try {
+    const text =
+      req.file?.buffer.toString('utf8') ||
+      (typeof req.body?.content === 'string' ? req.body.content : '');
+    if (!text) {
+      res.status(400).json({ error: 'Нет CSV-содержимого' });
+      return;
+    }
+    const parsed = parseCsvText(text);
+    res.json({ ...parsed, content: text, fileName: req.file?.originalname || 'data.csv' });
+  } catch (e) {
+    res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.post('/api/refresh', async (req, res) => {
+  try {
+    const { sources, pipelines } = req.body as {
+      sources: DataSource[];
+      pipelines: Pipeline[];
+    };
+    if (!Array.isArray(sources) || !Array.isArray(pipelines)) {
+      res.status(400).json({ error: 'Нужны sources и pipelines' });
+      return;
+    }
+
+    const datasets: Dataset[] = [];
+    const warnings: string[] = [];
+
+    for (const pipeline of pipelines) {
+      const source = sources.find((s) => s.id === pipeline.sourceId);
+      if (!source) {
+        warnings.push(`Источник для пайплайна «${pipeline.name}» не найден`);
+        continue;
+      }
+      try {
+        const { columns, rows } = await fetchSourceRows(source, pipeline);
+        const nonSqlSteps: Pipeline = {
+          ...pipeline,
+          steps: pipeline.steps.filter((s) => s.type !== 'sql'),
+        };
+        const dataset = runPipelineOnRows(rows, columns, nonSqlSteps);
+        datasets.push(dataset);
+        const size = JSON.stringify(dataset).length;
+        if (size > 2_000_000) {
+          warnings.push(
+            `Датасет «${dataset.name}» большой (~${Math.round(size / 1024)} КБ). HTML может быть тяжёлым.`,
+          );
+        }
+      } catch (e) {
+        warnings.push(
+          `Пайплайн «${pipeline.name}»: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
+    res.json({ datasets, warnings });
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+app.post('/api/export-html', (req, res) => {
+  try {
+    const payload = req.body as PublishedPayload;
+    if (!payload?.dashboard || !payload?.datasets) {
+      res.status(400).json({ error: 'Некорректный payload' });
+      return;
+    }
+
+    const safe: PublishedPayload = {
+      version: 1,
+      dashboard: payload.dashboard,
+      datasets: payload.datasets,
+      theme: payload.theme || getTheme(payload.dashboard.themeId),
+    };
+
+    const size = JSON.stringify(safe).length;
+    const warnings: string[] = [];
+    if (size > 3_000_000) {
+      warnings.push(`Снимок данных ~${Math.round(size / 1024)} КБ — файл HTML будет большим.`);
+    }
+
+    const templatePath = path.join(root, 'dist-viewer', 'index.html');
+    if (!fs.existsSync(templatePath)) {
+      res.status(500).json({
+        error:
+          'Шаблон viewer не собран. Выполните npm run build:viewer, затем повторите экспорт.',
+      });
+      return;
+    }
+
+    let html = fs.readFileSync(templatePath, 'utf8');
+    const injection = `<script>window.__DASHBOARD_PAYLOAD__=${JSON.stringify(safe)};</script>`;
+    if (html.includes('<!--DASHBOARD_PAYLOAD-->')) {
+      html = html.replace('<!--DASHBOARD_PAYLOAD-->', injection);
+    } else if (html.includes('</head>')) {
+      html = html.replace('</head>', `${injection}</head>`);
+    } else {
+      html = injection + html;
+    }
+
+    const safeName =
+      safe.dashboard.title.replace(/[^\wа-яА-ЯёЁ\- ]+/gi, '').trim() || 'dashboard';
+    res.json({
+      html,
+      warnings,
+      byteLength: Buffer.byteLength(html, 'utf8'),
+      fileName: `${safeName}.html`,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e instanceof Error ? e.message : String(e) });
+  }
+});
+
+const port = Number(process.env.PORT || 8787);
+app.listen(port, () => {
+  console.log(`Studio API http://localhost:${port}`);
+});

@@ -1,0 +1,250 @@
+import { useEffect, useMemo, useState } from 'react';
+import GridLayout from 'react-grid-layout/legacy';
+import type { Layout } from 'react-grid-layout/legacy';
+import 'react-grid-layout/css/styles.css';
+import 'react-resizable/css/styles.css';
+import { useStudioStore } from '../store/useStudioStore';
+import { getTheme } from '../shared/themes';
+import { WidgetRenderer } from '../viewer/WidgetRenderer';
+import type { FilterState } from '../shared/types';
+
+export function GridEditor() {
+  const dashboard = useStudioStore((s) => s.dashboard);
+  const datasets = useStudioStore((s) => s.datasets);
+  const previewMode = useStudioStore((s) => s.previewMode);
+  const updateLayouts = useStudioStore((s) => s.updateLayouts);
+  const removeWidget = useStudioStore((s) => s.removeWidget);
+  const updateWidget = useStudioStore((s) => s.updateWidget);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [filters, setFilters] = useState<FilterState>({});
+  const [width, setWidth] = useState(900);
+
+  const tab = dashboard.tabs.find((t) => t.id === dashboard.activeTabId);
+  const theme = getTheme(dashboard.themeId);
+
+  useEffect(() => {
+    const el = document.getElementById('grid-host');
+    if (!el) return;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    setWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+
+  useEffect(() => {
+    setFilters({});
+  }, [dashboard.activeTabId]);
+
+  const layout: Layout = useMemo(
+    () =>
+      (tab?.widgets || []).map((w) => ({
+        i: w.id,
+        x: w.layout.x,
+        y: w.layout.y,
+        w: w.layout.w,
+        h: w.layout.h,
+        static: previewMode,
+      })),
+    [tab, previewMode],
+  );
+
+  if (!tab) return null;
+
+  return (
+    <div className="grid-wrap">
+      <div
+        id="grid-host"
+        className="grid-host"
+        style={{ background: theme.background, color: theme.text, fontFamily: theme.fontFamily }}
+      >
+        <GridLayout
+          className="layout"
+          layout={layout}
+          cols={12}
+          rowHeight={48}
+          width={Math.max(width, 320)}
+          isDraggable={!previewMode}
+          isResizable={!previewMode}
+          onLayoutChange={(l) => {
+            if (!previewMode) {
+              updateLayouts(
+                l.map((item) => ({
+                  i: item.i,
+                  x: item.x,
+                  y: item.y,
+                  w: item.w,
+                  h: item.h,
+                })),
+              );
+            }
+          }}
+          margin={[12, 12]}
+          compactType="vertical"
+        >
+          {tab.widgets.map((w) => (
+            <div
+              key={w.id}
+              className={`widget-shell ${selectedId === w.id ? 'selected' : ''}`}
+              onClick={() => setSelectedId(w.id)}
+            >
+              {!previewMode && (
+                <div className="widget-chrome">
+                  <span>{w.title}</span>
+                  <button type="button" onClick={() => removeWidget(w.id)} aria-label="Удалить">
+                    ×
+                  </button>
+                </div>
+              )}
+              <div className="widget-body">
+                <WidgetRenderer
+                  widget={w}
+                  tabWidgets={tab.widgets}
+                  datasets={datasets}
+                  filters={filters}
+                  onFilterChange={(id, value) => setFilters((p) => ({ ...p, [id]: value }))}
+                  theme={theme}
+                  interactive={previewMode}
+                />
+              </div>
+            </div>
+          ))}
+        </GridLayout>
+        {!tab.widgets.length && (
+          <div className="empty-grid">Добавьте блок из библиотеки слева</div>
+        )}
+      </div>
+
+      {!previewMode && selectedId && (
+        <PropertiesInline
+          widgetId={selectedId}
+          onClose={() => setSelectedId(null)}
+          updateWidget={updateWidget}
+        />
+      )}
+    </div>
+  );
+}
+
+function PropertiesInline({
+  widgetId,
+  onClose,
+  updateWidget,
+}: {
+  widgetId: string;
+  onClose: () => void;
+  updateWidget: (id: string, patch: Parameters<ReturnType<typeof useStudioStore.getState>['updateWidget']>[1]) => void;
+}) {
+  const widget = useStudioStore((s) =>
+    s.dashboard.tabs.flatMap((t) => t.widgets).find((w) => w.id === widgetId),
+  );
+  const datasets = useStudioStore((s) => s.datasets);
+  if (!widget) return null;
+  const ds = datasets.find((d) => d.id === widget.binding.datasetId);
+  const cols = ds?.columns || [];
+
+  return (
+    <aside className="panel props">
+      <div className="props-head">
+        <h2>Свойства</h2>
+        <button type="button" className="btn ghost" onClick={onClose}>
+          Закрыть
+        </button>
+      </div>
+      <label>
+        Заголовок
+        <input
+          value={widget.title}
+          onChange={(e) => updateWidget(widget.id, { title: e.target.value })}
+        />
+      </label>
+      <label>
+        Датасет
+        <select
+          value={widget.binding.datasetId || ''}
+          onChange={(e) => updateWidget(widget.id, { binding: { datasetId: e.target.value } })}
+        >
+          <option value="">—</option>
+          {datasets.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      {['kpi', 'bar', 'line', 'pie'].includes(widget.type) && (
+        <>
+          {widget.type !== 'kpi' && (
+            <label>
+              Категория
+              <select
+                value={widget.binding.categoryColumn || ''}
+                onChange={(e) =>
+                  updateWidget(widget.id, { binding: { categoryColumn: e.target.value } })
+                }
+              >
+                <option value="">—</option>
+                {cols.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label>
+            Значение
+            <select
+              value={widget.binding.valueColumn || ''}
+              onChange={(e) =>
+                updateWidget(widget.id, { binding: { valueColumn: e.target.value } })
+              }
+            >
+              <option value="">—</option>
+              {cols.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+        </>
+      )}
+      {(widget.type === 'filter-select' || widget.type === 'filter-date') && (
+        <label>
+          Колонка фильтра
+          <select
+            value={widget.binding.filterColumn || ''}
+            onChange={(e) =>
+              updateWidget(widget.id, { binding: { filterColumn: e.target.value } })
+            }
+          >
+            <option value="">—</option>
+            {cols.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {widget.type === 'table' && (
+        <label>
+          Колонки (через запятую)
+          <input
+            value={(widget.binding.columns || []).join(', ')}
+            onChange={(e) =>
+              updateWidget(widget.id, {
+                binding: {
+                  columns: e.target.value
+                    .split(',')
+                    .map((x) => x.trim())
+                    .filter(Boolean),
+                },
+              })
+            }
+          />
+        </label>
+      )}
+    </aside>
+  );
+}
