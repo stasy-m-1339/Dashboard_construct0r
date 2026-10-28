@@ -106,6 +106,8 @@ export interface WidgetBinding {
   format?: 'number' | 'money' | 'pct' | string;
   tone?: WidgetTone;
   badge?: string;
+  /** Matrix/pivot: show row & column totals */
+  showTotals?: boolean;
 }
 
 export interface WidgetInstance {

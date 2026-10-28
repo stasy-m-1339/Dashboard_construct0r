@@ -194,8 +194,8 @@ export const BLOCK_LIBRARY: BlockPreset[] = [
   {
     id: 'sa-matrix',
     type: 'matrix',
-    title: 'Матрица',
-    description: 'Сводная матрица строк×колонок с подсветкой ± (matrix-tbl)',
+    title: 'Матрица (heatmap)',
+    description: 'Матрица значений с цветовой подсветкой ±',
     defaultBinding: {
       rowColumn: '',
       colColumn: '',
@@ -205,6 +205,24 @@ export const BLOCK_LIBRARY: BlockPreset[] = [
     },
     defaultLayout: { w: 8, h: 5 },
     schemaHint: 'Standalone summary matrix',
+  },
+  {
+    id: 'sa-pivot-table',
+    type: 'matrix',
+    title: 'Сводная таблица',
+    description:
+      'Сводная (pivot): строки × колонки, сумма, итоги по краям — для отчётов',
+    defaultBinding: {
+      rowColumn: '',
+      colColumn: '',
+      valueColumn: '',
+      format: 'money',
+      tone: 'insight',
+      badge: 'Сводная',
+      showTotals: true,
+    },
+    defaultLayout: { w: 10, h: 6 },
+    schemaHint: 'Pivot table with row/column totals',
   },
   {
     id: 'sa-filter-chips',

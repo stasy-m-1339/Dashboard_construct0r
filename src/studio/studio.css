@@ -145,6 +145,10 @@
   gap: 0;
 }
 
+.studio-body-wide {
+  grid-template-columns: minmax(0, 1fr) 300px;
+}
+
 .panel {
   border-right: 1px solid var(--line);
   background: var(--panel);
@@ -377,6 +381,13 @@
   font-size: 11px;
   color: var(--muted);
   padding: 2px 4px;
+  gap: 6px;
+}
+
+.widget-chrome-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .widget-chrome button {
@@ -385,6 +396,28 @@
   color: var(--muted);
   cursor: pointer;
   font-size: 16px;
+  line-height: 1;
+}
+
+.widget-chrome .icon-btn {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  color: var(--muted);
+}
+
+.widget-chrome .icon-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.widget-chrome .copy-ok {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .widget-body {
@@ -510,4 +543,193 @@
     border-left: 0;
     border-top: 1px solid var(--line);
   }
+}
+
+/* —— Modals —— */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(45, 42, 42, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 80;
+  padding: 24px;
+}
+
+.modal-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  width: min(520px, 100%);
+  max-height: min(80vh, 720px);
+  overflow: auto;
+  padding: 16px 18px 18px;
+  box-shadow: 0 16px 40px rgba(45, 42, 42, 0.12);
+}
+
+.modal-card.wide {
+  width: min(720px, 100%);
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.modal-block-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.modal-config label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.modal-config input,
+.modal-config select {
+  width: 100%;
+  box-sizing: border-box;
+  background: #fff;
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px;
+  font: inherit;
+  font-size: 13px;
+}
+
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.theme-card {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 12px;
+  padding: 10px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: inherit;
+}
+
+.theme-card.active,
+.theme-card:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.theme-swatch {
+  height: 44px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  padding: 6px;
+}
+
+.theme-swatch span {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.palette-strip {
+  display: flex;
+  gap: 6px;
+  margin-top: 14px;
+}
+
+.palette-strip span {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+}
+
+/* —— Viewport + edit grid —— */
+.viewport-scroll {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  background: #ece9e8;
+}
+
+.viewport-frame {
+  position: relative;
+  margin: 0 auto;
+  background: transparent;
+  min-height: 100%;
+}
+
+.viewport-frame.fluid {
+  width: 100%;
+  height: 100%;
+}
+
+.viewport-frame.viewport-1024 {
+  width: 1024px;
+  height: 768px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(45, 42, 42, 0.08);
+  background: #fff;
+}
+
+.viewport-frame.viewport-1024 .studio-canvas {
+  height: 100%;
+}
+
+.viewport-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  pointer-events: none;
+}
+
+.grid-host.show-grid {
+  background-image:
+    linear-gradient(to right, rgba(2, 102, 94, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(2, 102, 94, 0.07) 1px, transparent 1px);
+  background-size: calc((100% - 12px) / 12) 60px;
+  background-position: 12px 12px;
+}
+
+.grid-wrap {
+  display: flex;
+  flex-direction: row;
 }

@@ -1,17 +1,18 @@
+import { useState } from 'react';
 import { useStudioStore } from '../store/useStudioStore';
-import { THEMES } from '../shared/themes';
 import { getTheme } from '../shared/themes';
 import { downloadTextFile, exportHtml, fetchSampleCsv, refreshDatasets } from './api';
+import { LibraryModal, type LibraryKind } from './LibraryModal';
 
 export function Toolbar() {
   const title = useStudioStore((s) => s.dashboard.title);
-  const themeId = useStudioStore((s) => s.dashboard.themeId);
   const showFiltersPanel = useStudioStore((s) => !!s.dashboard.showFiltersPanel);
   const setTitle = useStudioStore((s) => s.setTitle);
-  const setThemeId = useStudioStore((s) => s.setThemeId);
   const setShowFiltersPanel = useStudioStore((s) => s.setShowFiltersPanel);
   const previewMode = useStudioStore((s) => s.previewMode);
   const setPreviewMode = useStudioStore((s) => s.setPreviewMode);
+  const viewportMode = useStudioStore((s) => s.viewportMode);
+  const setViewportMode = useStudioStore((s) => s.setViewportMode);
   const sources = useStudioStore((s) => s.sources);
   const pipelines = useStudioStore((s) => s.pipelines);
   const datasets = useStudioStore((s) => s.datasets);
@@ -21,6 +22,7 @@ export function Toolbar() {
   const setRefreshing = useStudioStore((s) => s.setRefreshing);
   const refreshing = useStudioStore((s) => s.refreshing);
   const addCsvSource = useStudioStore((s) => s.addCsvSource);
+  const [library, setLibrary] = useState<LibraryKind | null>(null);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -50,7 +52,6 @@ export function Toolbar() {
           `Снимок данных ~${Math.round(snapBytes / 1024)} КБ — HTML может быть тяжёлым для браузера.`,
         );
       }
-      // Publish payload: dashboard + datasets + theme only (no sources / passwords).
       const result = await exportHtml({
         version: 1,
         dashboard,
@@ -73,7 +74,6 @@ export function Toolbar() {
     try {
       const csv = await fetchSampleCsv();
       addCsvSource('Продажи (демо)', 'sales.csv', csv);
-      // refresh immediately
       const state = useStudioStore.getState();
       const { datasets: next, warnings } = await refreshDatasets(state.sources, state.pipelines);
       setDatasets(next);
@@ -85,48 +85,58 @@ export function Toolbar() {
   };
 
   return (
-    <header className="toolbar">
-      <div className="brand">
-        <span className="brand-mark">DC</span>
-        <input
-          className="title-input"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          aria-label="Название дашборда"
-        />
-      </div>
-      <div className="toolbar-actions">
-        <label className="field-inline">
-          Тема
-          <select value={themeId} onChange={(e) => setThemeId(e.target.value)}>
-            {THEMES.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field-inline" title="Боковая панель фильтров в превью и HTML">
+    <>
+      <header className="toolbar">
+        <div className="brand">
+          <span className="brand-mark">DC</span>
           <input
-            type="checkbox"
-            checked={showFiltersPanel}
-            onChange={(e) => setShowFiltersPanel(e.target.checked)}
+            className="title-input"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            aria-label="Название дашборда"
           />
-          Панель фильтров
-        </label>
-        <button type="button" className="btn ghost" onClick={onDemo}>
-          Демо CSV
-        </button>
-        <button type="button" className="btn" disabled={refreshing} onClick={onRefresh}>
-          {refreshing ? 'Обновление…' : 'Обновить данные'}
-        </button>
-        <button type="button" className="btn ghost" onClick={() => setPreviewMode(!previewMode)}>
-          {previewMode ? 'Редактор' : 'Превью'}
-        </button>
-        <button type="button" className="btn primary" onClick={onExport}>
-          Собрать HTML
-        </button>
-      </div>
-    </header>
+        </div>
+        <div className="toolbar-actions">
+          <button type="button" className="btn" onClick={() => setLibrary('widgets')}>
+            Добавить виджет…
+          </button>
+          <button type="button" className="btn" onClick={() => setLibrary('filters')}>
+            Добавить фильтр…
+          </button>
+          <button type="button" className="btn ghost" onClick={() => setLibrary('styles')}>
+            Стили…
+          </button>
+          <label className="field-inline" title="Боковая панель фильтров в превью и HTML">
+            <input
+              type="checkbox"
+              checked={showFiltersPanel}
+              onChange={(e) => setShowFiltersPanel(e.target.checked)}
+            />
+            Панель фильтров
+          </label>
+          <label className="field-inline" title="Рамка редактора/превью 1024×768">
+            <input
+              type="checkbox"
+              checked={viewportMode === '1024x768'}
+              onChange={(e) => setViewportMode(e.target.checked ? '1024x768' : 'fluid')}
+            />
+            1024×768
+          </label>
+          <button type="button" className="btn ghost" onClick={onDemo}>
+            Демо CSV
+          </button>
+          <button type="button" className="btn" disabled={refreshing} onClick={onRefresh}>
+            {refreshing ? 'Обновление…' : 'Обновить данные'}
+          </button>
+          <button type="button" className="btn ghost" onClick={() => setPreviewMode(!previewMode)}>
+            {previewMode ? 'Редактор' : 'Превью'}
+          </button>
+          <button type="button" className="btn primary" onClick={onExport}>
+            Собрать HTML
+          </button>
+        </div>
+      </header>
+      {library && <LibraryModal kind={library} onClose={() => setLibrary(null)} />}
+    </>
   );
 }

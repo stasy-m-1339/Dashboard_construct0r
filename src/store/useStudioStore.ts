@@ -40,9 +40,12 @@ function createDefaultProject(): StudioProject {
   };
 }
 
+export type ViewportMode = 'fluid' | '1024x768';
+
 interface StudioState extends StudioProject {
   customBlocks: BlockPreset[];
   previewMode: boolean;
+  viewportMode: ViewportMode;
   lastError: string | null;
   refreshing: boolean;
 
@@ -50,6 +53,7 @@ interface StudioState extends StudioProject {
   setThemeId: (themeId: string) => void;
   setShowFiltersPanel: (v: boolean) => void;
   setFiltersPanelCollapsed: (v: boolean) => void;
+  setViewportMode: (v: ViewportMode) => void;
   setActiveTab: (tabId: string) => void;
   addTab: () => void;
   renameTab: (tabId: string, title: string) => void;
@@ -89,6 +93,7 @@ export const useStudioStore = create<StudioState>()(
       ...createDefaultProject(),
       customBlocks: [],
       previewMode: false,
+      viewportMode: 'fluid',
       lastError: null,
       refreshing: false,
 
@@ -105,6 +110,8 @@ export const useStudioStore = create<StudioState>()(
 
       setFiltersPanelCollapsed: (filtersPanelCollapsed) =>
         set((s) => ({ dashboard: { ...s.dashboard, filtersPanelCollapsed } })),
+
+      setViewportMode: (viewportMode) => set({ viewportMode }),
 
       setActiveTab: (tabId) =>
         set((s) => ({ dashboard: { ...s.dashboard, activeTabId: tabId } })),

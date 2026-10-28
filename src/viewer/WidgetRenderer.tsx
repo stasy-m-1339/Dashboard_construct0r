@@ -400,6 +400,32 @@ export function WidgetRenderer({
     const colCol = widget.binding.colColumn || '';
     const valCol = widget.binding.valueColumn || '';
     const pivot = pivotSum(rows, rowCol, colCol, valCol);
+    const showTotals = !!widget.binding.showTotals;
+    const rowTotals = Object.fromEntries(
+      pivot.rows.map((r) => [
+        r,
+        pivot.cols.reduce((s, c) => s + (pivot.cells[r]?.[c] ?? 0), 0),
+      ]),
+    );
+    const colTotals = Object.fromEntries(
+      pivot.cols.map((c) => [
+        c,
+        pivot.rows.reduce((s, r) => s + (pivot.cells[r]?.[c] ?? 0), 0),
+      ]),
+    );
+    const grand = Object.values(rowTotals).reduce((a, b) => a + b, 0);
+    const cell = (v: number, strong = false) => {
+      const bg =
+        v > 0 ? 'rgba(2,102,94,0.12)' : v < 0 ? 'rgba(178,97,100,0.12)' : 'transparent';
+      return {
+        padding: '4px 6px',
+        borderBottom: `1px solid ${theme.border}`,
+        textAlign: 'right' as const,
+        background: bg,
+        color: v < 0 ? wine : theme.text,
+        fontWeight: strong ? 650 : 400,
+      };
+    };
     return (
       <div style={cardStyle}>
         {titleRow()}
@@ -439,6 +465,19 @@ export function WidgetRenderer({
                     {c}
                   </th>
                 ))}
+                {showTotals && (
+                  <th
+                    style={{
+                      textAlign: 'right',
+                      padding: '4px 6px',
+                      borderBottom: `1px solid ${theme.border}`,
+                      color: theme.accent,
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Итого
+                  </th>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -458,29 +497,44 @@ export function WidgetRenderer({
                   </td>
                   {pivot.cols.map((c) => {
                     const v = pivot.cells[r]?.[c] ?? 0;
-                    const bg =
-                      v > 0
-                        ? 'rgba(2,102,94,0.12)'
-                        : v < 0
-                          ? 'rgba(178,97,100,0.12)'
-                          : 'transparent';
                     return (
-                      <td
-                        key={c}
-                        style={{
-                          padding: '4px 6px',
-                          borderBottom: `1px solid ${theme.border}`,
-                          textAlign: 'right',
-                          background: bg,
-                          color: v < 0 ? wine : theme.text,
-                        }}
-                      >
+                      <td key={c} style={cell(v)}>
                         {v === 0 ? '—' : formatValue(v, widget.binding.format)}
                       </td>
                     );
                   })}
+                  {showTotals && (
+                    <td style={cell(rowTotals[r] || 0, true)}>
+                      {formatValue(rowTotals[r] || 0, widget.binding.format)}
+                    </td>
+                  )}
                 </tr>
               ))}
+              {showTotals && pivot.rows.length > 0 && (
+                <tr>
+                  <td
+                    style={{
+                      padding: '4px 6px',
+                      borderTop: `2px solid ${theme.border}`,
+                      position: 'sticky',
+                      left: 0,
+                      background: theme.surface,
+                      fontWeight: 650,
+                      color: theme.accent,
+                    }}
+                  >
+                    Итого
+                  </td>
+                  {pivot.cols.map((c) => (
+                    <td key={c} style={{ ...cell(colTotals[c] || 0, true), borderTop: `2px solid ${theme.border}` }}>
+                      {formatValue(colTotals[c] || 0, widget.binding.format)}
+                    </td>
+                  ))}
+                  <td style={{ ...cell(grand, true), borderTop: `2px solid ${theme.border}` }}>
+                    {formatValue(grand, widget.binding.format)}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
           {!pivot.rows.length && <div style={{ color: theme.muted, padding: 8 }}>Нет данных</div>}

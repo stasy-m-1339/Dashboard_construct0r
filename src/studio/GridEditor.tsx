@@ -13,13 +13,16 @@ export function GridEditor() {
   const dashboard = useStudioStore((s) => s.dashboard);
   const datasets = useStudioStore((s) => s.datasets);
   const previewMode = useStudioStore((s) => s.previewMode);
+  const viewportMode = useStudioStore((s) => s.viewportMode);
   const updateLayouts = useStudioStore((s) => s.updateLayouts);
   const removeWidget = useStudioStore((s) => s.removeWidget);
   const updateWidget = useStudioStore((s) => s.updateWidget);
   const setFiltersPanelCollapsed = useStudioStore((s) => s.setFiltersPanelCollapsed);
+  const setLastError = useStudioStore((s) => s.setLastError);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({});
   const [width, setWidth] = useState(900);
+  const [copyFlash, setCopyFlash] = useState<string | null>(null);
 
   const tab = dashboard.tabs.find((t) => t.id === dashboard.activeTabId);
   const theme = getTheme(dashboard.themeId);
@@ -65,88 +68,162 @@ export function GridEditor() {
     [gridWidgets, previewMode],
   );
 
+  const copyWidget = async (widgetId: string) => {
+    const w = tab?.widgets.find((x) => x.id === widgetId);
+    if (!w) return;
+    const payload = {
+      id: `copy-${w.type}`,
+      type: w.type,
+      title: w.title,
+      description: `Копия: ${w.title}`,
+      defaultBinding: { ...w.binding, datasetId: undefined },
+      defaultLayout: { w: w.layout.w, h: w.layout.h },
+    };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setCopyFlash(widgetId);
+      window.setTimeout(() => setCopyFlash(null), 1200);
+    } catch {
+      setLastError('Не удалось скопировать в буфер обмена');
+    }
+  };
+
   if (!tab) return null;
+
+  const frameClass =
+    viewportMode === '1024x768' ? 'viewport-frame viewport-1024' : 'viewport-frame fluid';
 
   return (
     <div className="grid-wrap">
-      <div className="dashboard-with-filters studio-canvas">
-        {panelActive && (
-          <FiltersPanel
-            widgets={tab.widgets}
-            tabWidgets={tab.widgets}
-            datasets={datasets}
-            filters={filters}
-            onFilterChange={(id, value) => setFilters((p) => ({ ...p, [id]: value }))}
-            theme={theme}
-            collapsed={!!dashboard.filtersPanelCollapsed}
-            onCollapsedChange={setFiltersPanelCollapsed}
-            selectedId={selectedId}
-            onSelectWidget={setSelectedId}
-            onClearAll={() => setFilters({})}
-          />
-        )}
-        <div
-          id="grid-host"
-          className="grid-host dashboard-main"
-          style={{ background: theme.background, color: theme.text, fontFamily: theme.fontFamily }}
-        >
-          <GridLayout
-            className="layout"
-            layout={layout}
-            cols={12}
-            rowHeight={48}
-            width={Math.max(width, 320)}
-            isDraggable={!previewMode}
-            isResizable={!previewMode}
-            onLayoutChange={(l) => {
-              if (!previewMode) {
-                updateLayouts(
-                  l.map((item) => ({
-                    i: item.i,
-                    x: item.x,
-                    y: item.y,
-                    w: item.w,
-                    h: item.h,
-                  })),
-                );
-              }
-              requestAnimationFrame(() => {
-                window.dispatchEvent(new Event('resize'));
-              });
-            }}
-            margin={[12, 12]}
-            compactType="vertical"
-          >
-            {gridWidgets.map((w) => (
-              <div
-                key={w.id}
-                className={`widget-shell ${selectedId === w.id ? 'selected' : ''}`}
-                onClick={() => setSelectedId(w.id)}
+      <div className="viewport-scroll">
+        <div className={frameClass}>
+          <div className="dashboard-with-filters studio-canvas">
+            {panelActive && (
+              <FiltersPanel
+                widgets={tab.widgets}
+                tabWidgets={tab.widgets}
+                datasets={datasets}
+                filters={filters}
+                onFilterChange={(id, value) => setFilters((p) => ({ ...p, [id]: value }))}
+                theme={theme}
+                collapsed={!!dashboard.filtersPanelCollapsed}
+                onCollapsedChange={setFiltersPanelCollapsed}
+                selectedId={selectedId}
+                onSelectWidget={setSelectedId}
+                onClearAll={() => setFilters({})}
+              />
+            )}
+            <div
+              id="grid-host"
+              className={`grid-host dashboard-main${!previewMode ? ' show-grid' : ''}`}
+              style={{
+                background: theme.background,
+                color: theme.text,
+                fontFamily: theme.fontFamily,
+              }}
+            >
+              <GridLayout
+                className="layout"
+                layout={layout}
+                cols={12}
+                rowHeight={48}
+                width={Math.max(width, 320)}
+                isDraggable={!previewMode}
+                isResizable={!previewMode}
+                onLayoutChange={(l) => {
+                  if (!previewMode) {
+                    updateLayouts(
+                      l.map((item) => ({
+                        i: item.i,
+                        x: item.x,
+                        y: item.y,
+                        w: item.w,
+                        h: item.h,
+                      })),
+                    );
+                  }
+                  requestAnimationFrame(() => {
+                    window.dispatchEvent(new Event('resize'));
+                  });
+                }}
+                margin={[12, 12]}
+                compactType="vertical"
               >
-                {!previewMode && (
-                  <div className="widget-chrome">
-                    <span>{w.title}</span>
-                    <button type="button" onClick={() => removeWidget(w.id)} aria-label="Удалить">
-                      ×
-                    </button>
+                {gridWidgets.map((w) => (
+                  <div
+                    key={w.id}
+                    className={`widget-shell ${selectedId === w.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedId(w.id)}
+                  >
+                    {!previewMode && (
+                      <div className="widget-chrome">
+                        <span>{w.title}</span>
+                        <div className="widget-chrome-actions">
+                          <button
+                            type="button"
+                            className="icon-btn"
+                            title="Скопировать в буфер"
+                            aria-label="Скопировать в буфер"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void copyWidget(w.id);
+                            }}
+                          >
+                            {copyFlash === w.id ? (
+                              <span className="copy-ok">✓</span>
+                            ) : (
+                              <svg
+                                viewBox="0 0 24 24"
+                                width="14"
+                                height="14"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <rect x="9" y="9" width="13" height="13" rx="2" />
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                              </svg>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeWidget(w.id);
+                            }}
+                            aria-label="Удалить"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="widget-body">
+                      <WidgetRenderer
+                        widget={w}
+                        tabWidgets={tab.widgets}
+                        datasets={datasets}
+                        filters={filters}
+                        onFilterChange={(id, value) => setFilters((p) => ({ ...p, [id]: value }))}
+                        theme={theme}
+                        interactive={previewMode || isFilterType(w.type)}
+                      />
+                    </div>
                   </div>
-                )}
-                <div className="widget-body">
-                  <WidgetRenderer
-                    widget={w}
-                    tabWidgets={tab.widgets}
-                    datasets={datasets}
-                    filters={filters}
-                    onFilterChange={(id, value) => setFilters((p) => ({ ...p, [id]: value }))}
-                    theme={theme}
-                    interactive={previewMode || isFilterType(w.type)}
-                  />
+                ))}
+              </GridLayout>
+              {!tab.widgets.length && (
+                <div className="empty-grid">
+                  Нажмите «Добавить виджет…» на панели сверху
                 </div>
-              </div>
-            ))}
-          </GridLayout>
-          {!tab.widgets.length && (
-            <div className="empty-grid">Добавьте блок из библиотеки слева</div>
+              )}
+            </div>
+          </div>
+          {viewportMode === '1024x768' && (
+            <div className="viewport-badge">1024×768</div>
           )}
         </div>
       </div>
@@ -376,6 +453,16 @@ function PropertiesInline({
                 </option>
               ))}
             </select>
+          </label>
+          <label className="field-inline">
+            <input
+              type="checkbox"
+              checked={!!widget.binding.showTotals}
+              onChange={(e) =>
+                updateWidget(widget.id, { binding: { showTotals: e.target.checked } })
+              }
+            />
+            Показывать итоги
           </label>
         </>
       )}

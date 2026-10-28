@@ -1,5 +1,4 @@
 import { Toolbar } from './studio/Toolbar';
-import { BlockPalette } from './studio/BlockPalette';
 import { TabBar } from './studio/TabBar';
 import { GridEditor } from './studio/GridEditor';
 import { DataPanel } from './studio/DataPanel';
@@ -21,8 +20,7 @@ export default function App() {
           </button>
         </div>
       )}
-      <div className="studio-body">
-        <BlockPalette />
+      <div className="studio-body studio-body-wide">
         <main className="studio-main">
           <TabBar />
           <GridEditor />
