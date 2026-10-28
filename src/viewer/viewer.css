@@ -20,3 +20,17 @@ body {
   outline: 3px solid rgba(2, 102, 94, 0.35);
   outline-offset: 2px;
 }
+
+.react-grid-item {
+  height: auto;
+}
+
+.chart-host,
+.chart-slot,
+.chart-host .echarts-for-react,
+.chart-host > div {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0;
+  min-height: 0;
+}

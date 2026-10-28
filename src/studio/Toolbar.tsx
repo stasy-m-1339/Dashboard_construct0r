@@ -6,8 +6,10 @@ import { downloadTextFile, exportHtml, fetchSampleCsv, refreshDatasets } from '.
 export function Toolbar() {
   const title = useStudioStore((s) => s.dashboard.title);
   const themeId = useStudioStore((s) => s.dashboard.themeId);
+  const showFiltersPanel = useStudioStore((s) => !!s.dashboard.showFiltersPanel);
   const setTitle = useStudioStore((s) => s.setTitle);
   const setThemeId = useStudioStore((s) => s.setThemeId);
+  const setShowFiltersPanel = useStudioStore((s) => s.setShowFiltersPanel);
   const previewMode = useStudioStore((s) => s.previewMode);
   const setPreviewMode = useStudioStore((s) => s.setPreviewMode);
   const sources = useStudioStore((s) => s.sources);
@@ -103,6 +105,14 @@ export function Toolbar() {
               </option>
             ))}
           </select>
+        </label>
+        <label className="field-inline" title="Боковая панель фильтров в превью и HTML">
+          <input
+            type="checkbox"
+            checked={showFiltersPanel}
+            onChange={(e) => setShowFiltersPanel(e.target.checked)}
+          />
+          Панель фильтров
         </label>
         <button type="button" className="btn ghost" onClick={onDemo}>
           Демо CSV

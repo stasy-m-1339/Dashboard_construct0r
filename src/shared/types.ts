@@ -142,6 +142,10 @@ export interface DashboardConfig {
   themeId: string;
   tabs: DashboardTab[];
   activeTabId: string;
+  /** Soft-rail filters panel (~320px), like standalone dashboard */
+  showFiltersPanel?: boolean;
+  /** Start collapsed when panel is enabled */
+  filtersPanelCollapsed?: boolean;
 }
 
 export interface StudioProject {

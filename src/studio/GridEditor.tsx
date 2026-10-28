@@ -6,6 +6,7 @@ import 'react-resizable/css/styles.css';
 import { useStudioStore } from '../store/useStudioStore';
 import { getTheme } from '../shared/themes';
 import { WidgetRenderer } from '../viewer/WidgetRenderer';
+import { FiltersPanel, partitionFilterWidgets } from '../viewer/FiltersPanel';
 import type { FilterState } from '../shared/types';
 
 export function GridEditor() {
@@ -15,12 +16,17 @@ export function GridEditor() {
   const updateLayouts = useStudioStore((s) => s.updateLayouts);
   const removeWidget = useStudioStore((s) => s.removeWidget);
   const updateWidget = useStudioStore((s) => s.updateWidget);
+  const setFiltersPanelCollapsed = useStudioStore((s) => s.setFiltersPanelCollapsed);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({});
   const [width, setWidth] = useState(900);
 
   const tab = dashboard.tabs.find((t) => t.id === dashboard.activeTabId);
   const theme = getTheme(dashboard.themeId);
+  const showFiltersPanel = !!dashboard.showFiltersPanel;
+  /** In preview (and when panel on): filters live in the rail; hide duplicates on grid. */
+  const panelActive = showFiltersPanel;
+  const hideFiltersOnGrid = panelActive && previewMode;
 
   useEffect(() => {
     const el = document.getElementById('grid-host');
@@ -29,15 +35,26 @@ export function GridEditor() {
     ro.observe(el);
     setWidth(el.clientWidth);
     return () => ro.disconnect();
-  }, []);
+  }, [panelActive, dashboard.filtersPanelCollapsed]);
 
   useEffect(() => {
     setFilters({});
   }, [dashboard.activeTabId]);
 
+  useEffect(() => {
+    const id = window.setTimeout(() => window.dispatchEvent(new Event('resize')), 80);
+    return () => window.clearTimeout(id);
+  }, [panelActive, dashboard.filtersPanelCollapsed, width, previewMode]);
+
+  const gridWidgets = useMemo(() => {
+    if (!tab) return [];
+    if (hideFiltersOnGrid) return partitionFilterWidgets(tab.widgets).rest;
+    return tab.widgets;
+  }, [tab, hideFiltersOnGrid]);
+
   const layout: Layout = useMemo(
     () =>
-      (tab?.widgets || []).map((w) => ({
+      gridWidgets.map((w) => ({
         i: w.id,
         x: w.layout.x,
         y: w.layout.y,
@@ -45,73 +62,93 @@ export function GridEditor() {
         h: w.layout.h,
         static: previewMode,
       })),
-    [tab, previewMode],
+    [gridWidgets, previewMode],
   );
 
   if (!tab) return null;
 
   return (
     <div className="grid-wrap">
-      <div
-        id="grid-host"
-        className="grid-host"
-        style={{ background: theme.background, color: theme.text, fontFamily: theme.fontFamily }}
-      >
-        <GridLayout
-          className="layout"
-          layout={layout}
-          cols={12}
-          rowHeight={48}
-          width={Math.max(width, 320)}
-          isDraggable={!previewMode}
-          isResizable={!previewMode}
-          onLayoutChange={(l) => {
-            if (!previewMode) {
-              updateLayouts(
-                l.map((item) => ({
-                  i: item.i,
-                  x: item.x,
-                  y: item.y,
-                  w: item.w,
-                  h: item.h,
-                })),
-              );
-            }
-          }}
-          margin={[12, 12]}
-          compactType="vertical"
-        >
-          {tab.widgets.map((w) => (
-            <div
-              key={w.id}
-              className={`widget-shell ${selectedId === w.id ? 'selected' : ''}`}
-              onClick={() => setSelectedId(w.id)}
-            >
-              {!previewMode && (
-                <div className="widget-chrome">
-                  <span>{w.title}</span>
-                  <button type="button" onClick={() => removeWidget(w.id)} aria-label="Удалить">
-                    ×
-                  </button>
-                </div>
-              )}
-              <div className="widget-body">
-                <WidgetRenderer
-                  widget={w}
-                  tabWidgets={tab.widgets}
-                  datasets={datasets}
-                  filters={filters}
-                  onFilterChange={(id, value) => setFilters((p) => ({ ...p, [id]: value }))}
-                  theme={theme}
-                  interactive={previewMode}
-                />
-              </div>
-            </div>
-          ))}
-        </GridLayout>
-        {!tab.widgets.length && (
-          <div className="empty-grid">Добавьте блок из библиотеки слева</div>
+      <div className="dashboard-with-filters studio-canvas">
+        {panelActive && (
+          <FiltersPanel
+            widgets={tab.widgets}
+            tabWidgets={tab.widgets}
+            datasets={datasets}
+            filters={filters}
+            onFilterChange={(id, value) => setFilters((p) => ({ ...p, [id]: value }))}
+            theme={theme}
+            collapsed={!!dashboard.filtersPanelCollapsed}
+            onCollapsedChange={setFiltersPanelCollapsed}
+            selectedId={selectedId}
+            onSelectWidget={setSelectedId}
+            onClearAll={() => setFilters({})}
+          />
         )}
+        <div
+          id="grid-host"
+          className="grid-host dashboard-main"
+          style={{ background: theme.background, color: theme.text, fontFamily: theme.fontFamily }}
+        >
+          <GridLayout
+            className="layout"
+            layout={layout}
+            cols={12}
+            rowHeight={48}
+            width={Math.max(width, 320)}
+            isDraggable={!previewMode}
+            isResizable={!previewMode}
+            onLayoutChange={(l) => {
+              if (!previewMode) {
+                updateLayouts(
+                  l.map((item) => ({
+                    i: item.i,
+                    x: item.x,
+                    y: item.y,
+                    w: item.w,
+                    h: item.h,
+                  })),
+                );
+              }
+              requestAnimationFrame(() => {
+                window.dispatchEvent(new Event('resize'));
+              });
+            }}
+            margin={[12, 12]}
+            compactType="vertical"
+          >
+            {gridWidgets.map((w) => (
+              <div
+                key={w.id}
+                className={`widget-shell ${selectedId === w.id ? 'selected' : ''}`}
+                onClick={() => setSelectedId(w.id)}
+              >
+                {!previewMode && (
+                  <div className="widget-chrome">
+                    <span>{w.title}</span>
+                    <button type="button" onClick={() => removeWidget(w.id)} aria-label="Удалить">
+                      ×
+                    </button>
+                  </div>
+                )}
+                <div className="widget-body">
+                  <WidgetRenderer
+                    widget={w}
+                    tabWidgets={tab.widgets}
+                    datasets={datasets}
+                    filters={filters}
+                    onFilterChange={(id, value) => setFilters((p) => ({ ...p, [id]: value }))}
+                    theme={theme}
+                    interactive={previewMode || isFilterType(w.type)}
+                  />
+                </div>
+              </div>
+            ))}
+          </GridLayout>
+          {!tab.widgets.length && (
+            <div className="empty-grid">Добавьте блок из библиотеки слева</div>
+          )}
+        </div>
       </div>
 
       {!previewMode && selectedId && (
@@ -125,6 +162,10 @@ export function GridEditor() {
   );
 }
 
+function isFilterType(type: string): boolean {
+  return type === 'filter-select' || type === 'filter-date' || type === 'filter-chips';
+}
+
 function PropertiesInline({
   widgetId,
   onClose,
@@ -132,7 +173,10 @@ function PropertiesInline({
 }: {
   widgetId: string;
   onClose: () => void;
-  updateWidget: (id: string, patch: Parameters<ReturnType<typeof useStudioStore.getState>['updateWidget']>[1]) => void;
+  updateWidget: (
+    id: string,
+    patch: Parameters<ReturnType<typeof useStudioStore.getState>['updateWidget']>[1],
+  ) => void;
 }) {
   const widget = useStudioStore((s) =>
     s.dashboard.tabs.flatMap((t) => t.widgets).find((w) => w.id === widgetId),
@@ -222,9 +266,7 @@ function PropertiesInline({
           </label>
         </>
       )}
-      {(widget.type === 'kpi-delta' ||
-        widget.type === 'combo' ||
-        widget.type === 'waterfall') && (
+      {(widget.type === 'kpi-delta' || widget.type === 'combo' || widget.type === 'waterfall') && (
         <label>
           {widget.type === 'combo' ? 'Линия (план)' : 'Сравнение / база'}
           <select

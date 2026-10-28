@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import GridLayout from 'react-grid-layout/legacy';
 import type { Layout } from 'react-grid-layout/legacy';
 import 'react-grid-layout/css/styles.css';
@@ -6,6 +6,7 @@ import 'react-resizable/css/styles.css';
 import type { FilterState, PublishedPayload } from '../shared/types';
 import { getTheme } from '../shared/themes';
 import { WidgetRenderer } from './WidgetRenderer';
+import { FiltersPanel, partitionFilterWidgets } from './FiltersPanel';
 
 interface Props {
   payload: PublishedPayload;
@@ -18,13 +19,25 @@ export function DashboardViewer({ payload, editable = false, width = 1200 }: Pro
   const theme = payload.theme || getTheme(payload.dashboard.themeId);
   const [activeTabId, setActiveTabId] = useState(payload.dashboard.activeTabId);
   const [filters, setFilters] = useState<FilterState>({});
+  const [panelCollapsed, setPanelCollapsed] = useState(
+    !!payload.dashboard.filtersPanelCollapsed,
+  );
+  const showFiltersPanel = !!payload.dashboard.showFiltersPanel;
 
   const tab =
     payload.dashboard.tabs.find((t) => t.id === activeTabId) || payload.dashboard.tabs[0];
 
+  const { rest: gridWidgets } = useMemo(
+    () =>
+      showFiltersPanel
+        ? partitionFilterWidgets(tab?.widgets || [])
+        : { filters: [], rest: tab?.widgets || [] },
+    [tab, showFiltersPanel],
+  );
+
   const layout: Layout = useMemo(
     () =>
-      (tab?.widgets || []).map((w) => ({
+      gridWidgets.map((w) => ({
         i: w.id,
         x: w.layout.x,
         y: w.layout.y,
@@ -32,18 +45,30 @@ export function DashboardViewer({ payload, editable = false, width = 1200 }: Pro
         h: w.layout.h,
         static: !editable,
       })),
-    [tab, editable],
+    [gridWidgets, editable],
   );
+
+  const panelWidth = showFiltersPanel ? (panelCollapsed ? 34 : 320) : 0;
+  const gridWidth = Math.max(320, width - panelWidth - 8);
+
+  useEffect(() => {
+    // Remeasure charts after panel toggle / tab change.
+    const id = window.setTimeout(() => window.dispatchEvent(new Event('resize')), 80);
+    return () => window.clearTimeout(id);
+  }, [panelCollapsed, showFiltersPanel, activeTabId, gridWidth]);
 
   return (
     <div
       style={{
         minHeight: '100%',
+        height: '100%',
         background: theme.background,
         color: theme.text,
         fontFamily: theme.fontFamily,
-        padding: '20px 24px 48px',
+        padding: '16px 20px 40px',
         boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
       <header
@@ -52,10 +77,11 @@ export function DashboardViewer({ payload, editable = false, width = 1200 }: Pro
           flexWrap: 'wrap',
           alignItems: 'baseline',
           gap: 16,
-          marginBottom: 20,
+          marginBottom: 14,
+          flexShrink: 0,
         }}
       >
-        <h1 style={{ margin: 0, fontSize: 28, fontWeight: 700, letterSpacing: '-0.03em' }}>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: '-0.03em' }}>
           {payload.dashboard.title}
         </h1>
         <nav style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -75,8 +101,7 @@ export function DashboardViewer({ payload, editable = false, width = 1200 }: Pro
                 padding: '6px 14px',
                 cursor: 'pointer',
                 fontSize: 13,
-                boxShadow:
-                  t.id === tab?.id ? '0 0 0 3px rgba(2,102,94,.25)' : 'none',
+                boxShadow: t.id === tab?.id ? '0 0 0 3px rgba(2,102,94,.25)' : 'none',
               }}
             >
               {t.title}
@@ -86,33 +111,57 @@ export function DashboardViewer({ payload, editable = false, width = 1200 }: Pro
       </header>
 
       {tab && (
-        <GridLayout
-          className="layout"
-          layout={layout}
-          cols={12}
-          rowHeight={48}
-          width={width}
-          isDraggable={editable}
-          isResizable={editable}
-          compactType="vertical"
-          margin={[12, 12]}
-        >
-          {tab.widgets.map((w) => (
-            <div key={w.id}>
-              <WidgetRenderer
-                widget={w}
-                tabWidgets={tab.widgets}
-                datasets={payload.datasets}
-                filters={filters}
-                onFilterChange={(id, value) =>
-                  setFilters((prev) => ({ ...prev, [id]: value }))
-                }
-                theme={theme}
-                interactive
-              />
-            </div>
-          ))}
-        </GridLayout>
+        <div className="dashboard-with-filters" style={{ flex: 1, minHeight: 480 }}>
+          {showFiltersPanel && (
+            <FiltersPanel
+              widgets={tab.widgets}
+              tabWidgets={tab.widgets}
+              datasets={payload.datasets}
+              filters={filters}
+              onFilterChange={(id, value) => setFilters((prev) => ({ ...prev, [id]: value }))}
+              theme={theme}
+              collapsed={panelCollapsed}
+              onCollapsedChange={setPanelCollapsed}
+              onClearAll={() => setFilters({})}
+            />
+          )}
+          <div className="dashboard-main">
+            <GridLayout
+              className="layout"
+              layout={layout}
+              cols={12}
+              rowHeight={48}
+              width={gridWidth}
+              isDraggable={editable}
+              isResizable={editable}
+              compactType="vertical"
+              margin={[12, 12]}
+              onLayoutChange={() => {
+                requestAnimationFrame(() => {
+                  window.dispatchEvent(new Event('resize'));
+                });
+              }}
+            >
+              {gridWidgets.map((w) => (
+                <div key={w.id} className="widget-shell">
+                  <div className="widget-body">
+                    <WidgetRenderer
+                      widget={w}
+                      tabWidgets={tab.widgets}
+                      datasets={payload.datasets}
+                      filters={filters}
+                      onFilterChange={(id, value) =>
+                        setFilters((prev) => ({ ...prev, [id]: value }))
+                      }
+                      theme={theme}
+                      interactive
+                    />
+                  </div>
+                </div>
+              ))}
+            </GridLayout>
+          </div>
+        </div>
       )}
     </div>
   );

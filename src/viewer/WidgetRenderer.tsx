@@ -1,5 +1,4 @@
 import type { CSSProperties, ReactNode } from 'react';
-import ReactECharts from 'echarts-for-react';
 import type {
   Dataset,
   FilterState,
@@ -17,6 +16,7 @@ import {
   topN,
   uniqueColumnValues,
 } from '../shared/filter';
+import { ChartHost } from './ChartHost';
 
 interface Props {
   widget: WidgetInstance;
@@ -750,14 +750,9 @@ export function WidgetRenderer({
   return (
     <div style={cardStyle}>
       {titleRow()}
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div className="chart-slot" style={{ flex: 1, minHeight: 0, width: '100%', position: 'relative' }}>
         {hasChartData ? (
-          <ReactECharts
-            option={option}
-            style={{ height: '100%', width: '100%' }}
-            opts={{ renderer: 'canvas' }}
-            notMerge
-          />
+          <ChartHost option={option} notMerge style={{ height: '100%', width: '100%' }} />
         ) : (
           <div style={{ color: theme.muted, padding: 12 }}>Нет данных для графика</div>
         )}

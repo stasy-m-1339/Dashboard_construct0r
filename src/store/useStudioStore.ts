@@ -31,6 +31,8 @@ function createDefaultProject(): StudioProject {
       themeId: DEFAULT_THEME_ID,
       tabs: [tab],
       activeTabId: tab.id,
+      showFiltersPanel: false,
+      filtersPanelCollapsed: false,
     },
     sources: [],
     pipelines: [],
@@ -46,6 +48,8 @@ interface StudioState extends StudioProject {
 
   setTitle: (title: string) => void;
   setThemeId: (themeId: string) => void;
+  setShowFiltersPanel: (v: boolean) => void;
+  setFiltersPanelCollapsed: (v: boolean) => void;
   setActiveTab: (tabId: string) => void;
   addTab: () => void;
   renameTab: (tabId: string, title: string) => void;
@@ -95,6 +99,12 @@ export const useStudioStore = create<StudioState>()(
         set((s) => ({
           dashboard: { ...s.dashboard, themeId: normalizeThemeId(themeId) },
         })),
+
+      setShowFiltersPanel: (showFiltersPanel) =>
+        set((s) => ({ dashboard: { ...s.dashboard, showFiltersPanel } })),
+
+      setFiltersPanelCollapsed: (filtersPanelCollapsed) =>
+        set((s) => ({ dashboard: { ...s.dashboard, filtersPanelCollapsed } })),
 
       setActiveTab: (tabId) =>
         set((s) => ({ dashboard: { ...s.dashboard, activeTabId: tabId } })),
