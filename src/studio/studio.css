@@ -384,6 +384,20 @@
   margin-bottom: 12px;
 }
 
+.step-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 8px;
+  background: rgba(2, 6, 23, 0.35);
+}
+
+.warn {
+  color: #fbbf24;
+  font-size: 12px;
+  margin-top: 4px;
+}
+
 @media (max-width: 1100px) {
   .studio-body {
     grid-template-columns: 1fr;

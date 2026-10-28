@@ -46,7 +46,21 @@ export type DataSource = SourceCsv | SourceMssql;
 export type PipelineStep =
   | { id: string; type: 'select-columns'; columns: string[] }
   | { id: string; type: 'filter-rows'; column: string; op: 'eq' | 'neq' | 'contains' | 'gt' | 'lt'; value: string }
-  | { id: string; type: 'aggregate'; groupBy: string[]; metrics: { column: string; fn: 'sum' | 'avg' | 'count' | 'min' | 'max'; as: string }[] }
+  | {
+      id: string;
+      type: 'join';
+      /** Other CSV/MSSQL source id (resolved during «Обновить данные») */
+      rightSourceId: string;
+      leftKey: string;
+      rightKey: string;
+      how: 'left' | 'inner';
+    }
+  | {
+      id: string;
+      type: 'aggregate';
+      groupBy: string[];
+      metrics: { column: string; fn: 'sum' | 'avg' | 'count' | 'min' | 'max'; as: string }[];
+    }
   | { id: string; type: 'sql'; query: string };
 
 export interface Pipeline {

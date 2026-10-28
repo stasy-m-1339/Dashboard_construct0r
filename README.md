@@ -31,6 +31,10 @@ npm run dev            # API :8787 + студия :5173
 | `npm run build:viewer` | Бандл viewer → `dist-viewer/index.html` |
 | `npm run build` | Сборка студии + viewer |
 | `npm run export:sample` | Собрать пример HTML в `samples/exported/` |
+| `npm run verify:mvp` | Аудит MVP-требований (без cron, один HTML) |
+
+Промпты для внешнего ИИ (пополнение библиотеки): документ в Agent Store проекта  
+`docs/ai-block-prompts.md` (путь store: `/cursor/stores/self/docs/ai-block-prompts.md`).
 
 ## Структура
 

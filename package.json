@@ -11,7 +11,8 @@
     "build": "tsc -b && vite build && npm run build:viewer",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
-    "export:sample": "npm run build:viewer && node scripts/export-sample.mjs"
+    "export:sample": "npm run build:viewer && node scripts/export-sample.mjs",
+    "verify:mvp": "node scripts/verify-mvp.mjs"
   },
   "dependencies": {
     "cors": "^2.8.6",

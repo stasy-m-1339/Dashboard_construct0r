@@ -41,14 +41,26 @@ export function Toolbar() {
         setLastError('Сначала нажмите «Обновить данные», чтобы подготовить снимок.');
         return;
       }
+      const snapBytes = JSON.stringify(datasets).length;
+      const localWarnings: string[] = [];
+      if (snapBytes > 2_000_000) {
+        localWarnings.push(
+          `Снимок данных ~${Math.round(snapBytes / 1024)} КБ — HTML может быть тяжёлым для браузера.`,
+        );
+      }
+      // Publish payload: dashboard + datasets + theme only (no sources / passwords).
       const result = await exportHtml({
         version: 1,
         dashboard,
         datasets,
         theme: getTheme(dashboard.themeId),
       });
-      if (result.warnings.length) setLastError(result.warnings.join('\n'));
-      downloadTextFile(result.fileName.endsWith('.html') ? result.fileName : `${result.fileName}.html`, result.html);
+      const allWarnings = [...localWarnings, ...result.warnings];
+      if (allWarnings.length) setLastError(allWarnings.join('\n'));
+      downloadTextFile(
+        result.fileName.endsWith('.html') ? result.fileName : `${result.fileName}.html`,
+        result.html,
+      );
     } catch (e) {
       setLastError(e instanceof Error ? e.message : String(e));
     }

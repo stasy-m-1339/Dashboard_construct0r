@@ -113,6 +113,41 @@ app.post('/api/refresh', async (req, res) => {
     const datasets: Dataset[] = [];
     const warnings: string[] = [];
 
+    // Preload raw tables for join steps (by source id). Credentials never leave this process.
+    const rawBySource: Record<string, { columns: string[]; rows: Dataset['rows'] }> = {};
+    for (const source of sources) {
+      try {
+        const sqlFromPipe = pipelines
+          .filter((p) => p.sourceId === source.id)
+          .flatMap((p) => p.steps)
+          .find((s) => s.type === 'sql');
+        const preloadPipe: Pipeline = {
+          id: 'preload',
+          name: 'preload',
+          sourceId: source.id,
+          datasetId: 'preload',
+          steps:
+            source.type === 'mssql'
+              ? [
+                  {
+                    id: 'sql',
+                    type: 'sql',
+                    query:
+                      sqlFromPipe && sqlFromPipe.type === 'sql'
+                        ? sqlFromPipe.query
+                        : 'SELECT 1 WHERE 1=0',
+                  },
+                ]
+              : [],
+        };
+        rawBySource[source.id] = await fetchSourceRows(source, preloadPipe);
+      } catch (e) {
+        warnings.push(
+          `Источник «${source.name}»: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      }
+    }
+
     for (const pipeline of pipelines) {
       const source = sources.find((s) => s.id === pipeline.sourceId);
       if (!source) {
@@ -120,12 +155,12 @@ app.post('/api/refresh', async (req, res) => {
         continue;
       }
       try {
-        const { columns, rows } = await fetchSourceRows(source, pipeline);
+        const base = rawBySource[source.id] || (await fetchSourceRows(source, pipeline));
         const nonSqlSteps: Pipeline = {
           ...pipeline,
           steps: pipeline.steps.filter((s) => s.type !== 'sql'),
         };
-        const dataset = runPipelineOnRows(rows, columns, nonSqlSteps);
+        const dataset = runPipelineOnRows(base.rows, base.columns, nonSqlSteps, rawBySource);
         datasets.push(dataset);
         const size = JSON.stringify(dataset).length;
         if (size > 2_000_000) {
@@ -154,10 +189,17 @@ app.post('/api/export-html', (req, res) => {
       return;
     }
 
+    // Explicitly publish only dashboard + datasets + theme (never sources/credentials).
     const safe: PublishedPayload = {
       version: 1,
       dashboard: payload.dashboard,
-      datasets: payload.datasets,
+      datasets: payload.datasets.map((d) => ({
+        id: d.id,
+        name: d.name,
+        columns: d.columns,
+        rows: d.rows,
+        updatedAt: d.updatedAt,
+      })),
       theme: payload.theme || getTheme(payload.dashboard.themeId),
     };
 

@@ -1,5 +1,7 @@
 import type { Dataset, DatasetRow, Pipeline, PipelineStep } from './types';
 
+export type TableSnapshot = { columns: string[]; rows: DatasetRow[] };
+
 function applySelectColumns(rows: DatasetRow[], columns: string[]): DatasetRow[] {
   if (!columns.length) return rows;
   return rows.map((row) => {
@@ -41,7 +43,7 @@ function applyAggregate(
 ): DatasetRow[] {
   const groups = new Map<string, DatasetRow[]>();
   for (const row of rows) {
-    const key = step.groupBy.map((c) => String(row[c] ?? '')).join('\0');
+    const key = step.groupBy.map((c: string) => String(row[c] ?? '')).join('\0');
     const list = groups.get(key) ?? [];
     list.push(row);
     groups.set(key, list);
@@ -83,10 +85,55 @@ function applyAggregate(
   return out;
 }
 
+function applyJoin(
+  leftRows: DatasetRow[],
+  leftCols: string[],
+  step: Extract<PipelineStep, { type: 'join' }>,
+  extras: Record<string, TableSnapshot>,
+): { rows: DatasetRow[]; columns: string[] } {
+  const right = extras[step.rightSourceId];
+  if (!right) {
+    throw new Error(`Join: правый источник «${step.rightSourceId}» не найден`);
+  }
+  const index = new Map<string, DatasetRow[]>();
+  for (const row of right.rows) {
+    const k = String(row[step.rightKey] ?? '');
+    const list = index.get(k) ?? [];
+    list.push(row);
+    index.set(k, list);
+  }
+
+  const rightOnlyCols = right.columns.filter(
+    (c) => c !== step.rightKey && !leftCols.includes(c),
+  );
+  const columns = [...leftCols, ...rightOnlyCols.filter((c) => !leftCols.includes(c))];
+  const out: DatasetRow[] = [];
+
+  for (const left of leftRows) {
+    const k = String(left[step.leftKey] ?? '');
+    const matches = index.get(k) || [];
+    if (!matches.length) {
+      if (step.how === 'left') {
+        const row: DatasetRow = { ...left };
+        for (const c of rightOnlyCols) row[c] = null;
+        out.push(row);
+      }
+      continue;
+    }
+    for (const rightRow of matches) {
+      const row: DatasetRow = { ...left };
+      for (const c of rightOnlyCols) row[c] = rightRow[c] ?? null;
+      out.push(row);
+    }
+  }
+  return { rows: out, columns };
+}
+
 export function runPipelineOnRows(
   rows: DatasetRow[],
   columns: string[],
   pipeline: Pipeline,
+  extras: Record<string, TableSnapshot> = {},
 ): Dataset {
   let current = rows;
   let cols = [...columns];
@@ -101,11 +148,17 @@ export function runPipelineOnRows(
       cols = step.columns.length ? step.columns : cols;
     } else if (step.type === 'filter-rows') {
       current = applyFilterRows(current, step);
+    } else if (step.type === 'join') {
+      const joined = applyJoin(current, cols, step, extras);
+      current = joined.rows;
+      cols = joined.columns;
     } else if (step.type === 'aggregate') {
       current = applyAggregate(current, step);
       cols = [
         ...step.groupBy,
-        ...step.metrics.map((m) => m.as || `${m.fn}_${m.column}`),
+        ...step.metrics.map((m: { as: string; fn: string; column: string }) =>
+          m.as || `${m.fn}_${m.column}`,
+        ),
       ];
     }
   }
