@@ -1,6 +1,67 @@
+import Papa from 'papaparse';
 import type { Dataset, DatasetRow, Pipeline, PipelineStep } from './types';
 
 export type TableSnapshot = { columns: string[]; rows: DatasetRow[] };
+
+/** Count unquoted delimiter candidates in a sample line. */
+function countDelims(line: string, delim: string): number {
+  let n = 0;
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (!inQuotes && ch === delim) {
+      n += 1;
+    }
+  }
+  return n;
+}
+
+/**
+ * Pick `;` / `,` / tab by majority votes on the first non-empty lines.
+ * Falls back to comma.
+ */
+export function detectCsvDelimiter(text: string): ',' | ';' | '\t' {
+  const lines = text
+    .replace(/^\uFEFF/, '')
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  if (!lines.length) return ',';
+
+  const candidates: Array<',' | ';' | '\t'> = [';', ',', '\t'];
+  let best: ',' | ';' | '\t' = ',';
+  let bestScore = -1;
+  for (const d of candidates) {
+    // Prefer delimiters that produce a stable column count > 1 across sample lines
+    const counts = lines.map((l) => countDelims(l, d) + 1);
+    const first = counts[0];
+    if (first < 2) continue;
+    const consistent = counts.filter((c) => c === first).length;
+    const score = consistent * 100 + first;
+    if (score > bestScore) {
+      bestScore = score;
+      best = d;
+    }
+  }
+  return best;
+}
+
+function coerceCell(raw: string): string | number {
+  const trimmed = raw.trim();
+  if (trimmed === '') return '';
+  // EU decimals often use comma when CSV is semicolon-separated
+  const normalized = trimmed.replace(/\s/g, '').replace(',', '.');
+  const num = Number(normalized);
+  if (!Number.isNaN(num) && /^-?\d/.test(trimmed)) return num;
+  return trimmed;
+}
 
 function applySelectColumns(rows: DatasetRow[], columns: string[]): DatasetRow[] {
   if (!columns.length) return rows;
@@ -177,44 +238,59 @@ export function runPipelineOnRows(
 }
 
 export function parseCsvText(text: string): { columns: string[]; rows: DatasetRow[] } {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim().length);
-  if (!lines.length) return { columns: [], rows: [] };
+  const cleaned = text.replace(/^\uFEFF/, '');
+  if (!cleaned.trim()) return { columns: [], rows: [] };
 
-  const split = (line: string): string[] => {
-    const result: string[] = [];
-    let cur = '';
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else {
-          inQuotes = !inQuotes;
-        }
-      } else if (ch === ',' && !inQuotes) {
-        result.push(cur.trim());
-        cur = '';
-      } else {
-        cur += ch;
-      }
-    }
-    result.push(cur.trim());
-    return result;
-  };
+  const guessed = detectCsvDelimiter(cleaned);
+  // PapaParse delimiter:'' also auto-detects; we pass our guess first so
+  // `;` wins over `,` when both appear (EU CSVs with decimal commas).
+  const parsed = Papa.parse<Record<string, string>>(cleaned, {
+    header: true,
+    delimiter: guessed,
+    skipEmptyLines: 'greedy',
+    transformHeader: (h) => h.trim(),
+  });
 
-  const columns = split(lines[0]);
-  const rows: DatasetRow[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const parts = split(lines[i]);
-    const row: DatasetRow = {};
-    columns.forEach((col, idx) => {
-      const raw = parts[idx] ?? '';
-      const num = Number(raw.replace(/\s/g, '').replace(',', '.'));
-      row[col] = raw !== '' && !Number.isNaN(num) && /^-?\d/.test(raw) ? num : raw;
+  let columns = (parsed.meta.fields || []).map((c) => c.trim()).filter(Boolean);
+
+  // If guess still yielded a single blob header, retry with Papa auto-detect.
+  if (columns.length <= 1 && cleaned.includes(';')) {
+    const retry = Papa.parse<Record<string, string>>(cleaned, {
+      header: true,
+      delimiter: '',
+      skipEmptyLines: 'greedy',
+      transformHeader: (h) => h.trim(),
     });
-    rows.push(row);
+    const retryCols = (retry.meta.fields || []).map((c) => c.trim()).filter(Boolean);
+    if (retryCols.length > columns.length) {
+      columns = retryCols;
+      const rows: DatasetRow[] = [];
+      for (const raw of retry.data) {
+        if (!raw || typeof raw !== 'object') continue;
+        const row: DatasetRow = {};
+        let empty = true;
+        for (const col of columns) {
+          const v = coerceCell(String((raw as Record<string, string>)[col] ?? ''));
+          row[col] = v;
+          if (v !== '' && v != null) empty = false;
+        }
+        if (!empty) rows.push(row);
+      }
+      return { columns, rows };
+    }
+  }
+
+  const rows: DatasetRow[] = [];
+  for (const raw of parsed.data) {
+    if (!raw || typeof raw !== 'object') continue;
+    const row: DatasetRow = {};
+    let empty = true;
+    for (const col of columns) {
+      const v = coerceCell(String((raw as Record<string, string>)[col] ?? ''));
+      row[col] = v;
+      if (v !== '' && v != null) empty = false;
+    }
+    if (!empty) rows.push(row);
   }
   return { columns, rows };
 }

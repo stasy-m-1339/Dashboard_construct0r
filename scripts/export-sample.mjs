@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import Papa from 'papaparse';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const csv = fs.readFileSync(path.join(root, 'samples', 'sales.csv'), 'utf8');
@@ -11,35 +12,46 @@ if (!fs.existsSync(templatePath)) {
   process.exit(1);
 }
 
-function parseCsv(text) {
-  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((l) => l.trim());
-  const split = (line) => {
-    const result = [];
-    let cur = '';
-    let inQuotes = false;
+function detectCsvDelimiter(text) {
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 8);
+  if (!lines.length) return ',';
+  const count = (line, delim) => {
+    let n = 0, q = false;
     for (let i = 0; i < line.length; i++) {
       const ch = line[i];
       if (ch === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          cur += '"';
-          i++;
-        } else inQuotes = !inQuotes;
-      } else if (ch === ',' && !inQuotes) {
-        result.push(cur.trim());
-        cur = '';
-      } else cur += ch;
+        if (q && line[i + 1] === '"') i++;
+        else q = !q;
+      } else if (!q && ch === delim) n++;
     }
-    result.push(cur.trim());
-    return result;
+    return n;
   };
-  const columns = split(lines[0]);
-  const rows = lines.slice(1).map((line) => {
-    const parts = split(line);
+  let best = ',', bestScore = -1;
+  for (const d of [';', ',', '\t']) {
+    const counts = lines.map((l) => count(l, d) + 1);
+    const first = counts[0];
+    if (first < 2) continue;
+    const score = counts.filter((c) => c === first).length * 100 + first;
+    if (score > bestScore) { bestScore = score; best = d; }
+  }
+  return best;
+}
+
+function parseCsv(text) {
+  const cleaned = text.replace(/^\uFEFF/, '');
+  const parsed = Papa.parse(cleaned, {
+    header: true,
+    delimiter: detectCsvDelimiter(cleaned),
+    skipEmptyLines: 'greedy',
+    transformHeader: (h) => h.trim(),
+  });
+  const columns = (parsed.meta.fields || []).map((c) => c.trim()).filter(Boolean);
+  const rows = parsed.data.map((raw) => {
     const row = {};
-    columns.forEach((col, idx) => {
-      const raw = parts[idx] ?? '';
-      const num = Number(String(raw).replace(/\s/g, '').replace(',', '.'));
-      row[col] = raw !== '' && !Number.isNaN(num) && /^-?\d/.test(raw) ? num : raw;
+    columns.forEach((col) => {
+      const v = String(raw[col] ?? '').trim();
+      const num = Number(v.replace(/\s/g, '').replace(',', '.'));
+      row[col] = v !== '' && !Number.isNaN(num) && /^-?\d/.test(v) ? num : v;
     });
     return row;
   });
