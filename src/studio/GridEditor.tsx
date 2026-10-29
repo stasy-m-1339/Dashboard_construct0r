@@ -152,7 +152,17 @@ export function GridEditor() {
                 {gridWidgets.map((w) => (
                   <div
                     key={w.id}
-                    className={`widget-shell ${selectedId === w.id ? 'selected' : ''}`}
+                    className={[
+                      'widget-shell',
+                      selectedId === w.id ? 'selected' : '',
+                      w.binding.tone === 'fact'
+                        ? 'tone-fact'
+                        : w.binding.tone === 'plan'
+                          ? 'tone-plan'
+                          : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
                     onClick={() => setSelectedId(w.id)}
                   >
                     {!previewMode && (

@@ -147,7 +147,19 @@ export function DashboardViewer({ payload, editable = false, width = 1200 }: Pro
               }}
             >
               {gridWidgets.map((w) => (
-                <div key={w.id} className="widget-shell">
+                <div
+                  key={w.id}
+                  className={[
+                    'widget-shell',
+                    w.binding.tone === 'fact'
+                      ? 'tone-fact'
+                      : w.binding.tone === 'plan'
+                        ? 'tone-plan'
+                        : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                >
                   <div className="widget-body">
                     <WidgetRenderer
                       widget={w}

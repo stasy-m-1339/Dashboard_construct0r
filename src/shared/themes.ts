@@ -415,6 +415,8 @@ export function resolveTheme(
 
 /** Apply theme tokens as CSS variables on an element (studio/viewer). */
 export function themeToCssVars(theme: ThemeConfig): Record<string, string> {
+  const bw = theme.borderWidth ?? 1;
+  const topW = theme.headerBg ? Math.max(bw, 3) : bw;
   return {
     '--theme-bg': theme.background,
     '--theme-surface': theme.surface,
@@ -424,7 +426,9 @@ export function themeToCssVars(theme: ThemeConfig): Record<string, string> {
     '--theme-border': theme.border,
     '--theme-font': theme.fontFamily,
     '--theme-radius': `${theme.radius ?? 10}px`,
-    '--theme-border-width': `${theme.borderWidth ?? 1}px`,
+    '--theme-border-width': `${bw}px`,
+    '--theme-border-top-width': `${topW}px`,
+    '--theme-border-top-color': theme.headerBg || theme.border,
     '--theme-shadow': theme.shadow ?? '0 1px 2px rgba(45,42,42,0.04)',
     '--theme-header': theme.headerBg || theme.accent,
   };

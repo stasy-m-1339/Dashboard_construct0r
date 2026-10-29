@@ -115,7 +115,7 @@ export function WidgetRenderer({
     const options = dataset ? uniqueColumnValues(dataset.rows, col) : [];
     const value = (filters[widget.id] as string) || '';
     return (
-      <div style={cardStyle}>
+      <div className="widget-card" style={cardStyle}>
         <label style={{ fontSize: 12, color: theme.muted, marginBottom: 8 }}>
           {widget.binding.label || widget.title}
         </label>
@@ -161,7 +161,7 @@ export function WidgetRenderer({
       onFilterChange(widget.id, next.size ? Array.from(next) : undefined);
     };
     return (
-      <div style={cardStyle}>
+      <div className="widget-card" style={cardStyle}>
         {titleRow()}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, overflow: 'auto' }}>
           {options.map((o) => {
@@ -196,7 +196,7 @@ export function WidgetRenderer({
   if (widget.type === 'filter-date') {
     const range = (filters[widget.id] as { from?: string; to?: string }) || {};
     return (
-      <div style={cardStyle}>
+      <div className="widget-card" style={cardStyle}>
         <div style={{ fontSize: 12, color: theme.muted, marginBottom: 8 }}>
           {widget.binding.label || widget.title}
         </div>
@@ -240,7 +240,7 @@ export function WidgetRenderer({
     const col = widget.binding.valueColumn || '';
     const total = aggregateNumeric(rows, col);
     return (
-      <div style={cardStyle}>
+      <div className="widget-card" style={cardStyle}>
         <div style={{ fontSize: 12, color: theme.muted }}>
           {widget.binding.label || widget.title}
         </div>
@@ -268,7 +268,7 @@ export function WidgetRenderer({
     const pct = base !== 0 ? delta / Math.abs(base) : 0;
     const pos = delta >= 0;
     return (
-      <div style={cardStyle}>
+      <div className="widget-card" style={cardStyle}>
         {titleRow(
           <span style={{ fontSize: 11, color: theme.muted, marginLeft: 'auto' }}>
             {widget.binding.label}
@@ -320,7 +320,7 @@ export function WidgetRenderer({
     const series = topN(groupSum(rows, cat, val), maxItems);
     const scale = Math.max(...series.map((s) => Math.abs(s.value)), 1);
     return (
-      <div style={cardStyle}>
+      <div className="widget-card" style={cardStyle}>
         {titleRow()}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, overflow: 'auto', flex: 1 }}>
           {series.map((s, i) => (
@@ -433,7 +433,7 @@ export function WidgetRenderer({
       };
     };
     return (
-      <div style={cardStyle}>
+      <div className="widget-card" style={cardStyle}>
         {titleRow()}
         <div style={{ overflow: 'auto', flex: 1 }}>
           <table
@@ -556,7 +556,7 @@ export function WidgetRenderer({
         : dataset?.columns || [];
     const compact = widget.binding.tone === 'fact' || widget.binding.tone === 'plan';
     return (
-      <div style={cardStyle}>
+      <div className="widget-card" style={cardStyle}>
         {titleRow()}
         <div style={{ overflow: 'auto', flex: 1 }}>
           <table
@@ -808,7 +808,7 @@ export function WidgetRenderer({
       : rows.length > 0;
 
   return (
-    <div style={cardStyle}>
+    <div className="widget-card" style={cardStyle}>
       {titleRow()}
       <div className="chart-slot" style={{ flex: 1, minHeight: 0, width: '100%', position: 'relative' }}>
         {hasChartData ? (
