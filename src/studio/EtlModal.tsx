@@ -3,6 +3,7 @@ import { useStudioStore } from '../store/useStudioStore';
 import type { CalculatedField, FieldRole, SourceMssql } from '../shared/types';
 import {
   CALC_KIND_LABELS,
+  CALC_KIND_ORDER,
   ROLE_LABELS,
   applyCalculatedFields,
   suggestFieldRoles,
@@ -48,10 +49,32 @@ export function EtlModal({ onClose }: Props) {
   });
   const [calcDraft, setCalcDraft] = useState<Omit<CalculatedField, 'id'>>({
     name: '',
-    kind: 'ratio',
+    kind: 'growth',
     a: '',
     b: '',
+    withYear: false,
   });
+
+  const isDateKind =
+    calcDraft.kind === 'year' ||
+    calcDraft.kind === 'month' ||
+    calcDraft.kind === 'iso_week';
+  const needsBase =
+    calcDraft.kind === 'ratio' ||
+    calcDraft.kind === 'pct' ||
+    calcDraft.kind === 'delta' ||
+    calcDraft.kind === 'growth' ||
+    calcDraft.kind === 'growth_contrib';
+  const fieldALabel =
+    calcDraft.kind === 'growth' || calcDraft.kind === 'growth_contrib'
+      ? 'Отчёт / факт (X_report)'
+      : isDateKind
+        ? 'Колонка даты'
+        : 'Поле A';
+  const fieldBLabel =
+    calcDraft.kind === 'growth' || calcDraft.kind === 'growth_contrib'
+      ? 'База / план (X_base)'
+      : 'Поле B';
 
   const ds = useMemo(
     () => datasets.find((d) => d.id === datasetId) || datasets[0],
@@ -106,7 +129,7 @@ export function EtlModal({ onClose }: Props) {
       rows: applied.rows,
       fieldRoles: applied.fieldRoles,
     });
-    setCalcDraft({ name: '', kind: 'ratio', a: '', b: '' });
+    setCalcDraft({ name: '', kind: 'growth', a: '', b: '', withYear: false });
   };
 
   const removeCalc = (id: string) => {
@@ -346,7 +369,8 @@ export function EtlModal({ onClose }: Props) {
           <section className="etl-section">
             <h3>Вычисляемые поля</h3>
             <p className="hint">
-              Простые выражения: отношение, разница, год/месяц из даты. Сохраняются с датасетом.
+              Прирост / вклад (как в standalone), ISO-неделя, отношение, год/месяц. Считаются при
+              обновлении и доступны как меры/измерения.
             </p>
             {ds && (
               <>
@@ -355,7 +379,15 @@ export function EtlModal({ onClose }: Props) {
                   <input
                     value={calcDraft.name}
                     onChange={(e) => setCalcDraft((d) => ({ ...d, name: e.target.value }))}
-                    placeholder="margin_pct"
+                    placeholder={
+                      calcDraft.kind === 'growth'
+                        ? 'prirost_pct'
+                        : calcDraft.kind === 'growth_contrib'
+                          ? 'vklad_pct'
+                          : calcDraft.kind === 'iso_week'
+                            ? 'iso_week'
+                            : 'calc_field'
+                    }
                   />
                 </label>
                 <label>
@@ -366,39 +398,55 @@ export function EtlModal({ onClose }: Props) {
                       setCalcDraft((d) => ({
                         ...d,
                         kind: e.target.value as CalculatedField['kind'],
+                        withYear:
+                          e.target.value === 'iso_week' ? d.withYear : false,
                       }))
                     }
                   >
-                    {(Object.keys(CALC_KIND_LABELS) as CalculatedField['kind'][]).map((k) => (
+                    {CALC_KIND_ORDER.map((k) => (
                       <option key={k} value={k}>
                         {CALC_KIND_LABELS[k]}
                       </option>
                     ))}
                   </select>
                 </label>
+                {calcDraft.kind === 'growth' && (
+                  <p className="hint">Формула: (X_отчёт − X_база) / X_база × 100</p>
+                )}
+                {calcDraft.kind === 'growth_contrib' && (
+                  <p className="hint">
+                    Формула: (X_отчёт − X_база) / Σ(X_база) × 100 — вклад строки в общий прирост
+                  </p>
+                )}
                 {calcDraft.kind !== 'const' && (
                   <FieldSelect
-                    label={calcDraft.kind === 'year' || calcDraft.kind === 'month' ? 'Дата' : 'Поле A'}
+                    label={fieldALabel}
                     dataset={ds}
                     value={calcDraft.a || ''}
                     onChange={(a) => setCalcDraft((d) => ({ ...d, a }))}
-                    roles={
-                      calcDraft.kind === 'year' || calcDraft.kind === 'month'
-                        ? 'date'
-                        : ['measure', 'dimension']
-                    }
+                    roles={isDateKind ? 'date' : 'measure'}
                   />
                 )}
-                {(calcDraft.kind === 'ratio' ||
-                  calcDraft.kind === 'pct' ||
-                  calcDraft.kind === 'delta') && (
+                {needsBase && (
                   <FieldSelect
-                    label="Поле B"
+                    label={fieldBLabel}
                     dataset={ds}
                     value={calcDraft.b || ''}
                     onChange={(b) => setCalcDraft((d) => ({ ...d, b }))}
-                    roles={['measure', 'dimension']}
+                    roles="measure"
                   />
+                )}
+                {calcDraft.kind === 'iso_week' && (
+                  <label className="field-inline">
+                    <input
+                      type="checkbox"
+                      checked={!!calcDraft.withYear}
+                      onChange={(e) =>
+                        setCalcDraft((d) => ({ ...d, withYear: e.target.checked }))
+                      }
+                    />
+                    С ISO-годом (формат YYYY.WW, как в standalone)
+                  </label>
                 )}
                 {calcDraft.kind === 'const' && (
                   <label>
@@ -421,7 +469,14 @@ export function EtlModal({ onClose }: Props) {
                       <div className="source-head">
                         <strong>
                           {c.name}{' '}
-                          <span className="muted">({CALC_KIND_LABELS[c.kind]})</span>
+                          <span className="muted">
+                            ({CALC_KIND_LABELS[c.kind]}
+                            {c.kind === 'iso_week' && c.withYear ? ', YYYY.WW' : ''}
+                            {c.kind === 'growth' || c.kind === 'growth_contrib'
+                              ? `: ${c.a || '?'} vs ${c.b || '?'}`
+                              : ''}
+                            )
+                          </span>
                         </strong>
                         <button type="button" className="btn ghost" onClick={() => removeCalc(c.id)}>
                           ×

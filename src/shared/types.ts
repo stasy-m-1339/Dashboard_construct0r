@@ -33,22 +33,39 @@ export interface FieldRoleMap {
 export type CalcExprKind =
   | 'sum' // alias / passthrough numeric
   | 'ratio' // a / b
-  | 'year' // year(dateCol)
-  | 'month' // month(dateCol)
+  | 'year' // calendar year(dateCol)
+  | 'month' // calendar month(dateCol)
+  | 'iso_week' // ISO 8601 week number (or YYYY.WW when withYear)
   | 'delta' // a - b
   | 'pct' // a / b * 100
+  | 'growth' // прирост: (report - base) / base * 100
+  | 'growth_contrib' // вклад: (report - base) / Sum(base) * 100
   | 'const'; // constant number
 
 export interface CalculatedField {
   id: string;
   name: string;
   kind: CalcExprKind;
-  /** Primary column (numerator / date / source) */
+  /**
+   * Primary column:
+   * - date for year/month/iso_week
+   * - report / actual measure for growth*
+   * - numerator / source otherwise
+   */
   a?: string;
-  /** Secondary column (denominator / subtract) */
+  /**
+   * Secondary column:
+   * - base / plan measure for growth*
+   * - denominator / subtract otherwise
+   */
   b?: string;
   /** For kind=const */
   value?: number;
+  /**
+   * iso_week: when true, emit `YYYY.WW` (ISO week-year + week),
+   * otherwise just the week number 1–53.
+   */
+  withYear?: boolean;
 }
 
 export interface Dataset {
