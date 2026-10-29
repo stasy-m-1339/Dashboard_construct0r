@@ -1,6 +1,15 @@
 import { useRef, useState } from 'react';
 import { useStudioStore } from '../store/useStudioStore';
-import type { PipelineStep, SourceMssql } from '../shared/types';
+import type { CsvDelimiter, PipelineStep, SourceCsv, SourceMssql } from '../shared/types';
+import { detectCsvDelimiter } from '../shared/pipelineRunner';
+import { refreshDatasets } from './api';
+
+const DELIM_OPTIONS: { id: CsvDelimiter; label: string }[] = [
+  { id: 'auto', label: 'Авто' },
+  { id: ';', label: 'Точка с запятой (;)' },
+  { id: ',', label: 'Запятая (,)' },
+  { id: '\t', label: 'Таб' },
+];
 
 function uid(prefix = 'step'): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
@@ -17,7 +26,12 @@ export function DataPanel() {
   const removeSource = useStudioStore((s) => s.removeSource);
   const updatePipeline = useStudioStore((s) => s.updatePipeline);
   const removePipeline = useStudioStore((s) => s.removePipeline);
+  const setDatasets = useStudioStore((s) => s.setDatasets);
+  const setLastError = useStudioStore((s) => s.setLastError);
+  const setRefreshing = useStudioStore((s) => s.setRefreshing);
+  const refreshing = useStudioStore((s) => s.refreshing);
   const fileRef = useRef<HTMLInputElement>(null);
+  const [csvDelim, setCsvDelim] = useState<CsvDelimiter>('auto');
   const [showMssql, setShowMssql] = useState(false);
   const [mssqlForm, setMssqlForm] = useState({
     name: 'MSSQL',
@@ -27,6 +41,34 @@ export function DataPanel() {
     password: '',
     port: 1433,
   });
+
+  const forceRefresh = async () => {
+    setRefreshing(true);
+    setLastError(null);
+    try {
+      const state = useStudioStore.getState();
+      const { datasets: next, warnings } = await refreshDatasets(
+        state.sources,
+        state.pipelines,
+      );
+      setDatasets(next);
+      if (warnings.length) setLastError(warnings.join('\n'));
+    } catch (e) {
+      setLastError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const uploadCsv = async (file: File) => {
+    const text = await file.text();
+    const detected = detectCsvDelimiter(text);
+    // Prefer explicit UI override; otherwise pin detected `;`/`tab` so refresh is stable.
+    const delim: CsvDelimiter =
+      csvDelim !== 'auto' ? csvDelim : detected === ',' ? 'auto' : detected;
+    addCsvSource(file.name.replace(/\.csv$/i, ''), file.name, text, delim);
+    await forceRefresh();
+  };
 
   const patchStep = (pipelineId: string, stepId: string, patch: Partial<PipelineStep>) => {
     const pipeline = pipelines.find((p) => p.id === pipelineId);
@@ -87,12 +129,34 @@ export function DataPanel() {
         Источники и пайплайны. Секреты MSSQL остаются только в студии и не попадают в HTML.
       </p>
 
-      <div className="row-actions">
+      <div className="row-actions" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
         <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
           + CSV
         </button>
         <button type="button" className="btn ghost" onClick={() => setShowMssql((v) => !v)}>
           + MSSQL
+        </button>
+        <label className="field-inline" title="Разделитель для новых CSV">
+          Разделитель
+          <select
+            value={csvDelim}
+            onChange={(e) => setCsvDelim(e.target.value as CsvDelimiter)}
+          >
+            {DELIM_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="btn ghost"
+          disabled={refreshing || !sources.length}
+          onClick={() => void forceRefresh()}
+          title="Перечитать CSV с текущим разделителем"
+        >
+          {refreshing ? 'Обновление…' : 'Обновить данные'}
         </button>
         <input
           ref={fileRef}
@@ -102,12 +166,15 @@ export function DataPanel() {
           onChange={async (e) => {
             const file = e.target.files?.[0];
             if (!file) return;
-            const text = await file.text();
-            addCsvSource(file.name.replace(/\.csv$/i, ''), file.name, text);
+            await uploadCsv(file);
             e.target.value = '';
           }}
         />
       </div>
+      <p className="hint">
+        Для Excel/RU CSV выберите «;». После загрузки снимок пересобирается сразу. Если колонка
+        одна — смените разделитель у источника и снова «Обновить данные».
+      </p>
 
       {showMssql && (
         <div className="mssql-form">
@@ -215,7 +282,28 @@ export function DataPanel() {
                 </label>
               </details>
             )}
-            {s.type === 'csv' && <div className="muted">{s.fileName}</div>}
+            {s.type === 'csv' && (
+              <>
+                <div className="muted">{(s as SourceCsv).fileName}</div>
+                <label>
+                  Разделитель CSV
+                  <select
+                    value={(s as SourceCsv).delimiter || 'auto'}
+                    onChange={(e) =>
+                      updateSource(s.id, {
+                        delimiter: e.target.value as CsvDelimiter,
+                      })
+                    }
+                  >
+                    {DELIM_OPTIONS.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
           </li>
         ))}
         {!sources.length && <li className="muted">Пока нет источников</li>}

@@ -11,6 +11,7 @@
     "build": "tsc -b && vite build && npm run build:viewer",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty false",
+    "test:csv": "tsx scripts/test-csv-delimiter.mjs",
     "export:sample": "npm run build:viewer && node scripts/export-sample.mjs",
     "verify:mvp": "node scripts/verify-mvp.mjs"
   },

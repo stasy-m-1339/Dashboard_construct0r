@@ -14,8 +14,6 @@ export function Toolbar() {
   const setPreviewMode = useStudioStore((s) => s.setPreviewMode);
   const viewportMode = useStudioStore((s) => s.viewportMode);
   const setViewportMode = useStudioStore((s) => s.setViewportMode);
-  const sources = useStudioStore((s) => s.sources);
-  const pipelines = useStudioStore((s) => s.pipelines);
   const datasets = useStudioStore((s) => s.datasets);
   const dashboard = useStudioStore((s) => s.dashboard);
   const setDatasets = useStudioStore((s) => s.setDatasets);
@@ -30,7 +28,12 @@ export function Toolbar() {
     setRefreshing(true);
     setLastError(null);
     try {
-      const { datasets: next, warnings } = await refreshDatasets(sources, pipelines);
+      // Always read latest sources (content + delimiter) so «Обновить» re-parses CSV.
+      const state = useStudioStore.getState();
+      const { datasets: next, warnings } = await refreshDatasets(
+        state.sources,
+        state.pipelines,
+      );
       setDatasets(next);
       if (warnings.length) setLastError(warnings.join('\n'));
     } catch (e) {

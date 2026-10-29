@@ -79,7 +79,12 @@ interface StudioState extends StudioProject {
   importBlockJson: (raw: unknown) => string | null;
   addCustomBlock: (preset: BlockPreset) => void;
 
-  addCsvSource: (name: string, fileName: string, content: string) => void;
+  addCsvSource: (
+    name: string,
+    fileName: string,
+    content: string,
+    delimiter?: import('../shared/types').CsvDelimiter,
+  ) => void;
   addMssqlSource: (source: Omit<SourceMssql, 'id' | 'type'>) => void;
   updateSource: (id: string, patch: Partial<DataSource>) => void;
   removeSource: (id: string) => void;
@@ -327,7 +332,7 @@ export const useStudioStore = create<StudioState>()(
           customBlocks: [...s.customBlocks.filter((b) => b.id !== preset.id), preset],
         })),
 
-      addCsvSource: (name, fileName, content) =>
+      addCsvSource: (name, fileName, content, delimiter = 'auto') =>
         set((s) => {
           const source: SourceCsv = {
             id: uid('src'),
@@ -335,6 +340,7 @@ export const useStudioStore = create<StudioState>()(
             name,
             fileName,
             content,
+            delimiter,
           };
           const datasetId = uid('ds');
           const pipeline: Pipeline = {

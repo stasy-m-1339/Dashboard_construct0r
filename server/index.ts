@@ -29,7 +29,10 @@ async function fetchSourceRows(
   pipeline: Pipeline,
 ): Promise<{ columns: string[]; rows: Dataset['rows'] }> {
   if (source.type === 'csv') {
-    return parseCsvText(source.content);
+    const parsed = parseCsvText(source.content, {
+      delimiter: source.delimiter ?? 'auto',
+    });
+    return { columns: parsed.columns, rows: parsed.rows };
   }
 
   const mssqlSource = source as SourceMssql;
@@ -93,8 +96,14 @@ app.post('/api/parse-csv', upload.single('file'), (req, res) => {
       res.status(400).json({ error: 'Нет CSV-содержимого' });
       return;
     }
-    const parsed = parseCsvText(text);
-    res.json({ ...parsed, content: text, fileName: req.file?.originalname || 'data.csv' });
+    const delimiter =
+      typeof req.body?.delimiter === 'string' ? req.body.delimiter : 'auto';
+    const parsed = parseCsvText(text, { delimiter });
+    res.json({
+      ...parsed,
+      content: text,
+      fileName: req.file?.originalname || 'data.csv',
+    });
   } catch (e) {
     res.status(400).json({ error: e instanceof Error ? e.message : String(e) });
   }

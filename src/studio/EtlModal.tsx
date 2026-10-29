@@ -1,6 +1,12 @@
 import { useMemo, useRef, useState } from 'react';
 import { useStudioStore } from '../store/useStudioStore';
-import type { CalculatedField, FieldRole, SourceMssql } from '../shared/types';
+import type {
+  CalculatedField,
+  CsvDelimiter,
+  FieldRole,
+  SourceCsv,
+  SourceMssql,
+} from '../shared/types';
 import {
   CALC_KIND_LABELS,
   CALC_KIND_ORDER,
@@ -8,8 +14,16 @@ import {
   applyCalculatedFields,
   suggestFieldRoles,
 } from '../shared/fieldMeta';
+import { detectCsvDelimiter } from '../shared/pipelineRunner';
 import { refreshDatasets } from './api';
 import { FieldSelect } from './FieldSelect';
+
+const DELIM_OPTIONS: { id: CsvDelimiter; label: string }[] = [
+  { id: 'auto', label: 'Авто' },
+  { id: ';', label: 'Точка с запятой (;)' },
+  { id: ',', label: 'Запятая (,)' },
+  { id: '\t', label: 'Таб' },
+];
 
 interface Props {
   onClose: () => void;
@@ -38,6 +52,7 @@ export function EtlModal({ onClose }: Props) {
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [datasetId, setDatasetId] = useState(datasets[0]?.id || '');
+  const [csvDelim, setCsvDelim] = useState<CsvDelimiter>('auto');
   const [showMssql, setShowMssql] = useState(false);
   const [mssqlForm, setMssqlForm] = useState({
     name: 'MSSQL',
@@ -85,15 +100,31 @@ export function EtlModal({ onClose }: Props) {
     setRefreshing(true);
     setLastError(null);
     try {
-      const { datasets: next, warnings } = await refreshDatasets(sources, pipelines);
+      // Always read latest sources (incl. delimiter) so «Обновить» re-parses CSV.
+      const state = useStudioStore.getState();
+      const { datasets: next, warnings } = await refreshDatasets(
+        state.sources,
+        state.pipelines,
+      );
       setDatasets(next);
       if (warnings?.length) setLastError(warnings.join('\n'));
-      if (next[0] && !datasetId) setDatasetId(next[0].id);
+      const first = next[0];
+      if (first) setDatasetId(first.id);
     } catch (e) {
       setLastError(e instanceof Error ? e.message : String(e));
     } finally {
       setRefreshing(false);
     }
+  };
+
+  const uploadCsv = async (file: File) => {
+    const text = await file.text();
+    const detected = detectCsvDelimiter(text);
+    // Prefer UI override; pin detected `;`/`tab` so refresh is stable across API restarts.
+    const delim: CsvDelimiter =
+      csvDelim !== 'auto' ? csvDelim : detected === ',' ? 'auto' : detected;
+    addCsvSource(file.name.replace(/\.csv$/i, ''), file.name, text, delim);
+    await onRefresh();
   };
 
   const setRole = (column: string, role: FieldRole) => {
@@ -177,13 +208,26 @@ export function EtlModal({ onClose }: Props) {
         <div className="etl-grid">
           <section className="etl-section">
             <h3>Источники</h3>
-            <div className="row-actions">
+            <div className="row-actions" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
               <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
                 + CSV
               </button>
               <button type="button" className="btn ghost" onClick={() => setShowMssql((v) => !v)}>
                 + MSSQL
               </button>
+              <label className="field-inline" title="Разделитель для новых CSV">
+                Разделитель
+                <select
+                  value={csvDelim}
+                  onChange={(e) => setCsvDelim(e.target.value as CsvDelimiter)}
+                >
+                  {DELIM_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <input
                 ref={fileRef}
                 type="file"
@@ -192,12 +236,15 @@ export function EtlModal({ onClose }: Props) {
                 onChange={async (e) => {
                   const file = e.target.files?.[0];
                   if (!file) return;
-                  const text = await file.text();
-                  addCsvSource(file.name.replace(/\.csv$/i, ''), file.name, text);
+                  await uploadCsv(file);
                   e.target.value = '';
                 }}
               />
             </div>
+            <p className="hint">
+              Для Excel/RU CSV обычно «;». После загрузки данные перечитываются сразу. Если колонка
+              одна — смените разделитель у источника и нажмите «Обновить данные».
+            </p>
             {showMssql && (
               <div className="mssql-form">
                 {(
@@ -253,7 +300,26 @@ export function EtlModal({ onClose }: Props) {
                     </button>
                   </div>
                   {s.type === 'csv' && (
-                    <div className="muted">{(s as { fileName?: string }).fileName}</div>
+                    <>
+                      <div className="muted">{(s as SourceCsv).fileName}</div>
+                      <label>
+                        Разделитель CSV
+                        <select
+                          value={(s as SourceCsv).delimiter || 'auto'}
+                          onChange={(e) =>
+                            updateSource(s.id, {
+                              delimiter: e.target.value as CsvDelimiter,
+                            })
+                          }
+                        >
+                          {DELIM_OPTIONS.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
                   )}
                   {s.type === 'mssql' && (
                     <label>

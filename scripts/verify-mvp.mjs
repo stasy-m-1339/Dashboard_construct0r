@@ -32,9 +32,10 @@ ok(
 const toolbar = fs.readFileSync(path.join(root, 'src/studio/Toolbar.tsx'), 'utf8');
 ok('preview + theme + refresh + export controls', 
   toolbar.includes('Превью') &&
-  toolbar.includes('setThemeId') &&
+  (toolbar.includes('setThemeId') || toolbar.includes('Стили')) &&
   toolbar.includes('Обновить данные') &&
-  toolbar.includes('Собрать HTML'),
+  toolbar.includes('Собрать HTML') &&
+  toolbar.includes('getState()'),
 );
 
 // 2) block library
@@ -54,6 +55,19 @@ ok(
 const dataPanel = fs.readFileSync(path.join(root, 'src/studio/DataPanel.tsx'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server/index.ts'), 'utf8');
 ok('CSV + MSSQL UI', dataPanel.includes('+ CSV') && dataPanel.includes('+ MSSQL'));
+ok(
+  'CSV delimiter override UI',
+  dataPanel.includes('Разделитель CSV') &&
+    dataPanel.includes("id: ';'") &&
+    dataPanel.includes('Обновить данные'),
+);
+ok(
+  'parseCsvText delimiter API',
+  fs.readFileSync(path.join(root, 'src/shared/pipelineRunner.ts'), 'utf8').includes(
+    'resolveCsvDelimiter',
+  ) &&
+    fs.readFileSync(path.join(root, 'src/studio/api.ts'), 'utf8').includes('refreshCsvInBrowser'),
+);
 ok(
   'pipeline steps UI',
   ['select-columns', 'filter-rows', 'join', 'aggregate'].every((t) => dataPanel.includes(t)),

@@ -80,6 +80,9 @@ export interface Dataset {
   calculatedFields?: CalculatedField[];
 }
 
+/** CSV delimiter override for parse / refresh. */
+export type CsvDelimiter = 'auto' | ',' | ';' | '\t';
+
 export interface SourceCsv {
   id: string;
   type: 'csv';
@@ -88,6 +91,11 @@ export interface SourceCsv {
   fileName: string;
   /** Raw CSV text stored in studio (not published) */
   content: string;
+  /**
+   * Delimiter used when parsing on refresh.
+   * `auto` detects `;` / `,` / tab from the first lines.
+   */
+  delimiter?: CsvDelimiter;
 }
 
 export interface SourceMssql {
