@@ -12,12 +12,14 @@ import type {
   DashboardTab,
   DataSource,
   Dataset,
+  PanelFilterConfig,
   Pipeline,
   SourceCsv,
   SourceMssql,
   StudioProject,
   WidgetInstance,
 } from '../shared/types';
+import { enrichDatasets } from '../shared/fieldMeta';
 
 function uid(prefix = 'id'): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -38,6 +40,7 @@ function createDefaultProject(): StudioProject {
       activeTabId: tab.id,
       showFiltersPanel: false,
       filtersPanelCollapsed: false,
+      panelFilters: [],
     },
     sources: [],
     pipelines: [],
@@ -59,6 +62,9 @@ interface StudioState extends StudioProject {
   setChartPaletteId: (paletteId: string | undefined) => void;
   setShowFiltersPanel: (v: boolean) => void;
   setFiltersPanelCollapsed: (v: boolean) => void;
+  addPanelFilters: (filters: Omit<PanelFilterConfig, 'id'>[]) => void;
+  removePanelFilter: (filterId: string) => void;
+  updatePanelFilter: (filterId: string, patch: Partial<PanelFilterConfig>) => void;
   setViewportMode: (v: ViewportMode) => void;
   setActiveTab: (tabId: string) => void;
   addTab: () => void;
@@ -83,6 +89,12 @@ interface StudioState extends StudioProject {
   removePipeline: (id: string) => void;
 
   setDatasets: (datasets: Dataset[]) => void;
+  updateDatasetMeta: (
+    datasetId: string,
+    patch: Partial<
+      Pick<Dataset, 'fieldRoles' | 'calculatedFields' | 'columns' | 'rows' | 'name'>
+    >,
+  ) => void;
   setPreviewMode: (v: boolean) => void;
   setLastError: (msg: string | null) => void;
   setRefreshing: (v: boolean) => void;
@@ -134,6 +146,44 @@ export const useStudioStore = create<StudioState>()(
 
       setFiltersPanelCollapsed: (filtersPanelCollapsed) =>
         set((s) => ({ dashboard: { ...s.dashboard, filtersPanelCollapsed } })),
+
+      addPanelFilters: (filters) =>
+        set((s) => {
+          const existing = s.dashboard.panelFilters || [];
+          const existingKeys = new Set(existing.map((f) => `${f.datasetId}::${f.column}`));
+          const next: PanelFilterConfig[] = [...existing];
+          for (const f of filters) {
+            const key = `${f.datasetId}::${f.column}`;
+            if (existingKeys.has(key)) continue;
+            existingKeys.add(key);
+            next.push({ ...f, id: uid('pf') });
+          }
+          return {
+            dashboard: {
+              ...s.dashboard,
+              showFiltersPanel: true,
+              panelFilters: next,
+            },
+          };
+        }),
+
+      removePanelFilter: (filterId) =>
+        set((s) => ({
+          dashboard: {
+            ...s.dashboard,
+            panelFilters: (s.dashboard.panelFilters || []).filter((f) => f.id !== filterId),
+          },
+        })),
+
+      updatePanelFilter: (filterId, patch) =>
+        set((s) => ({
+          dashboard: {
+            ...s.dashboard,
+            panelFilters: (s.dashboard.panelFilters || []).map((f) =>
+              f.id === filterId ? { ...f, ...patch, id: f.id } : f,
+            ),
+          },
+        })),
 
       setViewportMode: (viewportMode) => set({ viewportMode }),
 
@@ -358,7 +408,14 @@ export const useStudioStore = create<StudioState>()(
       removePipeline: (id) =>
         set((s) => ({ pipelines: s.pipelines.filter((p) => p.id !== id) })),
 
-      setDatasets: (datasets) => set({ datasets }),
+      setDatasets: (datasets) =>
+        set((s) => ({ datasets: enrichDatasets(datasets, s.datasets) })),
+
+      updateDatasetMeta: (datasetId, patch) =>
+        set((s) => ({
+          datasets: s.datasets.map((d) => (d.id === datasetId ? { ...d, ...patch } : d)),
+        })),
+
       setPreviewMode: (previewMode) => set({ previewMode }),
       setLastError: (lastError) => set({ lastError }),
       setRefreshing: (refreshing) => set({ refreshing }),
@@ -379,13 +436,6 @@ export const useStudioStore = create<StudioState>()(
             title: 'Выручка',
             binding: { datasetId: ds.id, valueColumn: 'amount', label: 'Сумма продаж' },
             layout: { x: 0, y: 0, w: 3, h: 2 },
-          },
-          {
-            id: uid('w'),
-            type: 'filter-select',
-            title: 'Регион',
-            binding: { datasetId: ds.id, filterColumn: 'region', label: 'Регион' },
-            layout: { x: 3, y: 0, w: 3, h: 2 },
           },
           {
             id: uid('w'),
@@ -428,10 +478,35 @@ export const useStudioStore = create<StudioState>()(
             layout: { x: 0, y: 10, w: 12, h: 5 },
           },
         ];
+        const panelFilters: PanelFilterConfig[] = [
+          {
+            id: uid('pf'),
+            kind: 'select',
+            datasetId: ds.id,
+            column: 'region',
+            label: 'Регион',
+          },
+          {
+            id: uid('pf'),
+            kind: 'select',
+            datasetId: ds.id,
+            column: 'category',
+            label: 'Категория',
+          },
+          {
+            id: uid('pf'),
+            kind: 'date',
+            datasetId: ds.id,
+            column: 'date',
+            label: 'Период',
+          },
+        ];
         set({
           dashboard: {
             ...s.dashboard,
             title: 'Демо: продажи',
+            showFiltersPanel: true,
+            panelFilters,
             tabs: s.dashboard.tabs.map((t) =>
               t.id === tab.id ? { ...t, title: 'Обзор', widgets } : t,
             ),

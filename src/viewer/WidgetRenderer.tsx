@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import type {
+  DashboardConfig,
   Dataset,
   FilterState,
   ThemeConfig,
@@ -26,6 +27,8 @@ interface Props {
   onFilterChange: (widgetId: string, value: FilterState[string]) => void;
   theme: ThemeConfig;
   interactive?: boolean;
+  /** When set, panel filters are source of truth if panel enabled */
+  dashboard?: Pick<DashboardConfig, 'showFiltersPanel' | 'panelFilters'>;
 }
 
 function toneAccent(theme: ThemeConfig, tone?: WidgetTone): string {
@@ -71,9 +74,10 @@ export function WidgetRenderer({
   onFilterChange,
   theme,
   interactive = true,
+  dashboard,
 }: Props) {
   const dataset = datasets.find((d) => d.id === widget.binding.datasetId);
-  const rows = filterDatasetRows(dataset, tabWidgets, filters, datasets);
+  const rows = filterDatasetRows(dataset, tabWidgets, filters, datasets, dashboard);
   const cardStyle = cardStyleFor(theme, widget.binding.tone);
   const accent = toneAccent(theme, widget.binding.tone);
   const wine = '#b26164';

@@ -8,6 +8,8 @@ import { resolveTheme, themeToCssVars } from '../shared/themes';
 import { buildWidgetDataTsv } from '../shared/copyWidgetData';
 import { WidgetRenderer } from '../viewer/WidgetRenderer';
 import { FiltersPanel, partitionFilterWidgets } from '../viewer/FiltersPanel';
+import { LibraryModal } from './LibraryModal';
+import { FieldSelect } from './FieldSelect';
 import type { FilterState } from '../shared/types';
 
 export function GridEditor() {
@@ -19,19 +21,22 @@ export function GridEditor() {
   const removeWidget = useStudioStore((s) => s.removeWidget);
   const updateWidget = useStudioStore((s) => s.updateWidget);
   const setFiltersPanelCollapsed = useStudioStore((s) => s.setFiltersPanelCollapsed);
+  const removePanelFilter = useStudioStore((s) => s.removePanelFilter);
+  const updatePanelFilter = useStudioStore((s) => s.updatePanelFilter);
   const setLastError = useStudioStore((s) => s.setLastError);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [filters, setFilters] = useState<FilterState>({});
   const [width, setWidth] = useState(900);
   const [copyFlash, setCopyFlash] = useState<string | null>(null);
+  const [openFilterAdd, setOpenFilterAdd] = useState(false);
 
   const tab = dashboard.tabs.find((t) => t.id === dashboard.activeTabId);
   const theme = resolveTheme(dashboard.themeId, dashboard.chartPaletteId);
   const themeVars = themeToCssVars(theme);
   const showFiltersPanel = !!dashboard.showFiltersPanel;
-  /** In preview (and when panel on): filters live in the rail; hide duplicates on grid. */
+  /** Panel filters are independent — never show canvas filter widgets while panel is on. */
   const panelActive = showFiltersPanel;
-  const hideFiltersOnGrid = panelActive && previewMode;
+  const hideFiltersOnGrid = panelActive;
 
   useEffect(() => {
     const el = document.getElementById('grid-host');
@@ -73,7 +78,7 @@ export function GridEditor() {
   const copyWidget = async (widgetId: string) => {
     const w = tab?.widgets.find((x) => x.id === widgetId);
     if (!w || !tab) return;
-    const tsv = buildWidgetDataTsv(w, tab.widgets, datasets, filters);
+    const tsv = buildWidgetDataTsv(w, tab.widgets, datasets, filters, dashboard);
     if (!tsv.trim()) {
       setLastError('Нет данных для копирования. Проверьте датасет и фильтры.');
       return;
@@ -99,17 +104,18 @@ export function GridEditor() {
           <div className="dashboard-with-filters studio-canvas">
             {panelActive && (
               <FiltersPanel
-                widgets={tab.widgets}
-                tabWidgets={tab.widgets}
+                panelFilters={dashboard.panelFilters || []}
                 datasets={datasets}
                 filters={filters}
                 onFilterChange={(id, value) => setFilters((p) => ({ ...p, [id]: value }))}
                 theme={theme}
                 collapsed={!!dashboard.filtersPanelCollapsed}
                 onCollapsedChange={setFiltersPanelCollapsed}
-                selectedId={selectedId}
-                onSelectWidget={setSelectedId}
                 onClearAll={() => setFilters({})}
+                onRemoveFilter={removePanelFilter}
+                onUpdateFilter={updatePanelFilter}
+                onAddFields={() => setOpenFilterAdd(true)}
+                editable={!previewMode}
               />
             )}
             <div
@@ -220,6 +226,7 @@ export function GridEditor() {
                         onFilterChange={(id, value) => setFilters((p) => ({ ...p, [id]: value }))}
                         theme={theme}
                         interactive={previewMode || isFilterType(w.type)}
+                        dashboard={dashboard}
                       />
                     </div>
                   </div>
@@ -237,6 +244,10 @@ export function GridEditor() {
           )}
         </div>
       </div>
+
+      {openFilterAdd && (
+        <LibraryModal kind="filters" onClose={() => setOpenFilterAdd(false)} />
+      )}
 
       {!previewMode && selectedId && (
         <PropertiesInline
@@ -318,67 +329,42 @@ function PropertiesInline({
       ].includes(widget.type) && (
         <>
           {!['kpi', 'kpi-delta'].includes(widget.type) && (
-            <label>
-              Категория
-              <select
-                value={widget.binding.categoryColumn || ''}
-                onChange={(e) =>
-                  updateWidget(widget.id, { binding: { categoryColumn: e.target.value } })
-                }
-              >
-                <option value="">—</option>
-                {cols.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <label>
-            Значение
-            <select
-              value={widget.binding.valueColumn || ''}
-              onChange={(e) =>
-                updateWidget(widget.id, { binding: { valueColumn: e.target.value } })
+            <FieldSelect
+              label="Категория"
+              dataset={ds}
+              value={widget.binding.categoryColumn || ''}
+              onChange={(categoryColumn) =>
+                updateWidget(widget.id, { binding: { categoryColumn } })
               }
-            >
-              <option value="">—</option>
-              {cols.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
+              roles={['dimension', 'filter', 'date']}
+            />
+          )}
+          <FieldSelect
+            label="Значение"
+            dataset={ds}
+            value={widget.binding.valueColumn || ''}
+            onChange={(valueColumn) => updateWidget(widget.id, { binding: { valueColumn } })}
+            roles="measure"
+          />
         </>
       )}
       {(widget.type === 'kpi-delta' || widget.type === 'combo' || widget.type === 'waterfall') && (
-        <label>
-          {widget.type === 'combo' ? 'Линия (план)' : 'Сравнение / база'}
-          <select
-            value={
-              widget.type === 'combo'
-                ? widget.binding.lineColumn || widget.binding.compareColumn || ''
-                : widget.binding.compareColumn || ''
-            }
-            onChange={(e) =>
-              updateWidget(widget.id, {
-                binding:
-                  widget.type === 'combo'
-                    ? { lineColumn: e.target.value }
-                    : { compareColumn: e.target.value },
-              })
-            }
-          >
-            <option value="">—</option>
-            {cols.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
+        <FieldSelect
+          label={widget.type === 'combo' ? 'Линия (план)' : 'Сравнение / база'}
+          dataset={ds}
+          value={
+            widget.type === 'combo'
+              ? widget.binding.lineColumn || widget.binding.compareColumn || ''
+              : widget.binding.compareColumn || ''
+          }
+          onChange={(col) =>
+            updateWidget(widget.id, {
+              binding:
+                widget.type === 'combo' ? { lineColumn: col } : { compareColumn: col },
+            })
+          }
+          roles="measure"
+        />
       )}
       {widget.type === 'stacked-bar' && (
         <label>
@@ -416,54 +402,27 @@ function PropertiesInline({
       )}
       {widget.type === 'matrix' && (
         <>
-          <label>
-            Строки
-            <select
-              value={widget.binding.rowColumn || ''}
-              onChange={(e) =>
-                updateWidget(widget.id, { binding: { rowColumn: e.target.value } })
-              }
-            >
-              <option value="">—</option>
-              {cols.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Колонки
-            <select
-              value={widget.binding.colColumn || ''}
-              onChange={(e) =>
-                updateWidget(widget.id, { binding: { colColumn: e.target.value } })
-              }
-            >
-              <option value="">—</option>
-              {cols.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Значение
-            <select
-              value={widget.binding.valueColumn || ''}
-              onChange={(e) =>
-                updateWidget(widget.id, { binding: { valueColumn: e.target.value } })
-              }
-            >
-              <option value="">—</option>
-              {cols.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
+          <FieldSelect
+            label="Строки"
+            dataset={ds}
+            value={widget.binding.rowColumn || ''}
+            onChange={(rowColumn) => updateWidget(widget.id, { binding: { rowColumn } })}
+            roles={['dimension', 'filter', 'date']}
+          />
+          <FieldSelect
+            label="Колонки"
+            dataset={ds}
+            value={widget.binding.colColumn || ''}
+            onChange={(colColumn) => updateWidget(widget.id, { binding: { colColumn } })}
+            roles={['dimension', 'filter', 'date']}
+          />
+          <FieldSelect
+            label="Значение"
+            dataset={ds}
+            value={widget.binding.valueColumn || ''}
+            onChange={(valueColumn) => updateWidget(widget.id, { binding: { valueColumn } })}
+            roles="measure"
+          />
           <label className="field-inline">
             <input
               type="checkbox"

@@ -22,12 +22,45 @@ export type WidgetTone = 'default' | 'fact' | 'plan' | 'insight';
 
 export type DatasetRow = Record<string, string | number | boolean | null>;
 
+/** Suggested / user-overridden role of a dataset column. */
+export type FieldRole = 'dimension' | 'measure' | 'filter' | 'date' | 'ignore';
+
+export interface FieldRoleMap {
+  [column: string]: FieldRole;
+}
+
+/** Simple calculated field stored with the dataset. */
+export type CalcExprKind =
+  | 'sum' // alias / passthrough numeric
+  | 'ratio' // a / b
+  | 'year' // year(dateCol)
+  | 'month' // month(dateCol)
+  | 'delta' // a - b
+  | 'pct' // a / b * 100
+  | 'const'; // constant number
+
+export interface CalculatedField {
+  id: string;
+  name: string;
+  kind: CalcExprKind;
+  /** Primary column (numerator / date / source) */
+  a?: string;
+  /** Secondary column (denominator / subtract) */
+  b?: string;
+  /** For kind=const */
+  value?: number;
+}
+
 export interface Dataset {
   id: string;
   name: string;
   columns: string[];
   rows: DatasetRow[];
   updatedAt?: string;
+  /** Field roles (suggested after load, user can override) */
+  fieldRoles?: FieldRoleMap;
+  /** Extra computed columns materialised into rows/columns */
+  calculatedFields?: CalculatedField[];
 }
 
 export interface SourceCsv {
@@ -160,6 +193,18 @@ export interface ChartPalettePreset {
   accentHint?: string;
 }
 
+/** Soft-rail panel filter (independent of canvas widgets). */
+export type PanelFilterKind = 'select' | 'date';
+
+export interface PanelFilterConfig {
+  id: string;
+  kind: PanelFilterKind;
+  datasetId: string;
+  /** Column to filter (for dates: which date column) */
+  column: string;
+  label?: string;
+}
+
 export interface DashboardConfig {
   id: string;
   title: string;
@@ -175,6 +220,12 @@ export interface DashboardConfig {
   showFiltersPanel?: boolean;
   /** Start collapsed when panel is enabled */
   filtersPanelCollapsed?: boolean;
+  /**
+   * Panel filter fields — source of truth when showFiltersPanel is on.
+   * Independent from canvas filter widgets (deleting a grid filter does not
+   * remove these).
+   */
+  panelFilters?: PanelFilterConfig[];
 }
 
 export interface StudioProject {
@@ -203,6 +254,10 @@ export interface PublishedPayload {
 }
 
 export interface FilterState {
-  /** widgetId -> selected value(s) */
-  [widgetId: string]: string | string[] | { from?: string; to?: string } | undefined;
+  /** filter id (panel or canvas widget) -> selected value(s) */
+  [filterId: string]:
+    | string
+    | string[]
+    | { from?: string; to?: string; week?: string }
+    | undefined;
 }

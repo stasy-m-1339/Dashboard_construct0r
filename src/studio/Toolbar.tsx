@@ -3,6 +3,7 @@ import { useStudioStore } from '../store/useStudioStore';
 import { resolveTheme } from '../shared/themes';
 import { downloadTextFile, exportHtml, fetchSampleCsv, refreshDatasets } from './api';
 import { LibraryModal, type LibraryKind } from './LibraryModal';
+import { EtlModal } from './EtlModal';
 
 export function Toolbar() {
   const title = useStudioStore((s) => s.dashboard.title);
@@ -23,6 +24,7 @@ export function Toolbar() {
   const refreshing = useStudioStore((s) => s.refreshing);
   const addCsvSource = useStudioStore((s) => s.addCsvSource);
   const [library, setLibrary] = useState<LibraryKind | null>(null);
+  const [etlOpen, setEtlOpen] = useState(false);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -106,7 +108,15 @@ export function Toolbar() {
           <button type="button" className="btn ghost" onClick={() => setLibrary('styles')}>
             Стили…
           </button>
-          <label className="field-inline" title="Боковая панель фильтров в превью и HTML">
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setEtlOpen(true)}
+            title="Источники, роли полей, вычисляемые поля"
+          >
+            Данные…
+          </button>
+          <label className="field-inline" title="Боковая панель фильтров">
             <input
               type="checkbox"
               checked={showFiltersPanel}
@@ -137,6 +147,7 @@ export function Toolbar() {
         </div>
       </header>
       {library && <LibraryModal kind={library} onClose={() => setLibrary(null)} />}
+      {etlOpen && <EtlModal onClose={() => setEtlOpen(false)} />}
     </>
   );
 }

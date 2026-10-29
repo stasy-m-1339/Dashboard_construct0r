@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { BLOCK_LIBRARY } from '../shared/blocks';
-import { getDashboardLibrary, getFilterLibrary } from '../shared/libraries';
+import { getDashboardLibrary } from '../shared/libraries';
 import { THEMES, CHART_PALETTES, BRAND } from '../shared/themes';
+import { isDateLikeColumn } from '../shared/filter';
 import { useStudioStore } from '../store/useStudioStore';
-import type { BlockPreset } from '../shared/types';
+import type { BlockPreset, PanelFilterConfig } from '../shared/types';
+import { FieldSelect } from './FieldSelect';
 
 export type LibraryKind = 'widgets' | 'filters' | 'styles';
 
@@ -14,7 +16,7 @@ interface Props {
 
 const TITLES: Record<LibraryKind, string> = {
   widgets: 'Добавить виджет',
-  filters: 'Добавить элемент фильтра',
+  filters: 'Фильтры панели',
   styles: 'Стили и палитры',
 };
 
@@ -65,7 +67,8 @@ export function LibraryModal({ kind, onClose }: Props) {
   const setChartPaletteId = useStudioStore((s) => s.setChartPaletteId);
   const themeId = useStudioStore((s) => s.dashboard.themeId);
   const chartPaletteId = useStudioStore((s) => s.dashboard.chartPaletteId);
-  const setShowFiltersPanel = useStudioStore((s) => s.setShowFiltersPanel);
+  const panelFilters = useStudioStore((s) => s.dashboard.panelFilters || []);
+  const addPanelFilters = useStudioStore((s) => s.addPanelFilters);
   const updateWidget = useStudioStore((s) => s.updateWidget);
   const [picked, setPicked] = useState<BlockPreset | null>(null);
   const [cfg, setCfg] = useState({
@@ -78,13 +81,12 @@ export function LibraryModal({ kind, onClose }: Props) {
     colColumn: '',
     label: '',
   });
+  const [pickedCols, setPickedCols] = useState<string[]>([]);
 
-  const items = useMemo(() => {
-    if (kind === 'filters') return getFilterLibrary(customBlocks);
-    return getDashboardLibrary(customBlocks);
-  }, [kind, customBlocks]);
+  const items = useMemo(() => getDashboardLibrary(customBlocks), [customBlocks]);
 
-  const cols = datasets.find((d) => d.id === cfg.datasetId)?.columns || [];
+  const activeDs = datasets.find((d) => d.id === cfg.datasetId) || datasets[0];
+  const cols = activeDs?.columns || [];
 
   const applyPick = (preset: BlockPreset) => {
     setPicked(preset);
@@ -140,9 +142,110 @@ export function LibraryModal({ kind, onClose }: Props) {
         },
       });
     }
-    if (kind === 'filters') setShowFiltersPanel(true);
     onClose();
   };
+
+  const confirmPanelFilters = () => {
+    if (!activeDs || !pickedCols.length) return;
+    const existing = new Set(panelFilters.map((f) => `${f.datasetId}::${f.column}`));
+    const toAdd: Omit<PanelFilterConfig, 'id'>[] = [];
+    for (const col of pickedCols) {
+      const key = `${activeDs.id}::${col}`;
+      if (existing.has(key)) continue;
+      const role = activeDs.fieldRoles?.[col];
+      const kind =
+        role === 'date' || isDateLikeColumn(activeDs, col) ? 'date' : 'select';
+      toAdd.push({
+        kind,
+        datasetId: activeDs.id,
+        column: col,
+        label: col,
+      });
+    }
+    addPanelFilters(toAdd);
+    setPickedCols([]);
+    onClose();
+  };
+
+  if (kind === 'filters') {
+    const already = new Set(
+      panelFilters.filter((f) => f.datasetId === (activeDs?.id || '')).map((f) => f.column),
+    );
+    return (
+      <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+        <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-head">
+            <h2>{TITLES.filters}</h2>
+            <button type="button" className="btn ghost" onClick={onClose}>
+              Закрыть
+            </button>
+          </div>
+          <p className="hint">
+            Отметьте поля датасета — они попадут в боковую панель фильтров (не на холст).
+            Даты получат скруббер недель / календарь.
+          </p>
+          <label>
+            Датасет
+            <select
+              value={activeDs?.id || ''}
+              onChange={(e) => {
+                setCfg((c) => ({ ...c, datasetId: e.target.value }));
+                setPickedCols([]);
+              }}
+            >
+              {!datasets.length && <option value="">—</option>}
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="field-multiselect">
+            {cols.map((c) => {
+              const role = activeDs?.fieldRoles?.[c];
+              const isDate = role === 'date' || (activeDs ? isDateLikeColumn(activeDs, c) : false);
+              const on = pickedCols.includes(c);
+              const inPanel = already.has(c);
+              return (
+                <label key={c} className={`fp-option${on || inPanel ? ' on' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={on || inPanel}
+                    disabled={inPanel}
+                    onChange={() =>
+                      setPickedCols((prev) =>
+                        prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c],
+                      )
+                    }
+                  />
+                  <span>
+                    {c}
+                    {isDate ? ' · дата' : role ? ` · ${role}` : ''}
+                    {inPanel ? ' (уже в панели)' : ''}
+                  </span>
+                </label>
+              );
+            })}
+            {!cols.length && <p className="warn">Сначала загрузите данные (Данные… / Демо CSV).</p>}
+          </div>
+          <div className="row-actions">
+            <button type="button" className="btn ghost" onClick={onClose}>
+              Отмена
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={!pickedCols.length}
+              onClick={confirmPanelFilters}
+            >
+              Добавить в панель ({pickedCols.length})
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (kind === 'styles') {
     const themePreferred = THEMES.find((t) => t.id === themeId)?.preferredPaletteId;
@@ -270,113 +373,56 @@ export function LibraryModal({ kind, onClose }: Props) {
                 ))}
               </select>
             </label>
-            {kind === 'filters' ? (
-              <label>
-                Колонка фильтра
-                <select
-                  value={cfg.filterColumn}
-                  onChange={(e) => setCfg((c) => ({ ...c, filterColumn: e.target.value }))}
-                >
-                  <option value="">—</option>
-                  {cols.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : picked.type === 'matrix' ? (
+            {picked.type === 'matrix' ? (
               <>
-                <label>
-                  Строки
-                  <select
-                    value={cfg.rowColumn}
-                    onChange={(e) => setCfg((c) => ({ ...c, rowColumn: e.target.value }))}
-                  >
-                    <option value="">—</option>
-                    {cols.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Колонки
-                  <select
-                    value={cfg.colColumn}
-                    onChange={(e) => setCfg((c) => ({ ...c, colColumn: e.target.value }))}
-                  >
-                    <option value="">—</option>
-                    {cols.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Значение (сумма)
-                  <select
-                    value={cfg.valueColumn}
-                    onChange={(e) => setCfg((c) => ({ ...c, valueColumn: e.target.value }))}
-                  >
-                    <option value="">—</option>
-                    {cols.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <FieldSelect
+                  label="Строки"
+                  dataset={activeDs}
+                  value={cfg.rowColumn}
+                  onChange={(rowColumn) => setCfg((c) => ({ ...c, rowColumn }))}
+                  roles={['dimension', 'filter', 'date']}
+                />
+                <FieldSelect
+                  label="Колонки"
+                  dataset={activeDs}
+                  value={cfg.colColumn}
+                  onChange={(colColumn) => setCfg((c) => ({ ...c, colColumn }))}
+                  roles={['dimension', 'filter', 'date']}
+                />
+                <FieldSelect
+                  label="Значение (сумма)"
+                  dataset={activeDs}
+                  value={cfg.valueColumn}
+                  onChange={(valueColumn) => setCfg((c) => ({ ...c, valueColumn }))}
+                  roles="measure"
+                />
               </>
             ) : (
               <>
                 {!['kpi', 'kpi-delta'].includes(picked.type) && (
-                  <label>
-                    Категория
-                    <select
-                      value={cfg.categoryColumn}
-                      onChange={(e) => setCfg((c) => ({ ...c, categoryColumn: e.target.value }))}
-                    >
-                      <option value="">—</option>
-                      {cols.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <FieldSelect
+                    label="Категория"
+                    dataset={activeDs}
+                    value={cfg.categoryColumn}
+                    onChange={(categoryColumn) => setCfg((c) => ({ ...c, categoryColumn }))}
+                    roles={['dimension', 'filter', 'date']}
+                  />
                 )}
-                <label>
-                  Значение
-                  <select
-                    value={cfg.valueColumn}
-                    onChange={(e) => setCfg((c) => ({ ...c, valueColumn: e.target.value }))}
-                  >
-                    <option value="">—</option>
-                    {cols.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <FieldSelect
+                  label="Значение"
+                  dataset={activeDs}
+                  value={cfg.valueColumn}
+                  onChange={(valueColumn) => setCfg((c) => ({ ...c, valueColumn }))}
+                  roles="measure"
+                />
                 {(picked.type === 'kpi-delta' || picked.type === 'combo') && (
-                  <label>
-                    Сравнение / линия
-                    <select
-                      value={cfg.compareColumn}
-                      onChange={(e) => setCfg((c) => ({ ...c, compareColumn: e.target.value }))}
-                    >
-                      <option value="">—</option>
-                      {cols.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <FieldSelect
+                    label="Сравнение / линия"
+                    dataset={activeDs}
+                    value={cfg.compareColumn}
+                    onChange={(compareColumn) => setCfg((c) => ({ ...c, compareColumn }))}
+                    roles="measure"
+                  />
                 )}
               </>
             )}

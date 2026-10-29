@@ -1,4 +1,4 @@
-import type { Dataset, FilterState, WidgetInstance } from './types';
+import type { DashboardConfig, Dataset, FilterState, WidgetInstance } from './types';
 import {
   aggregateNumeric,
   filterDatasetRows,
@@ -35,9 +35,10 @@ export function buildWidgetDataTsv(
   tabWidgets: WidgetInstance[],
   datasets: Dataset[],
   filters: FilterState,
+  dashboard?: Pick<DashboardConfig, 'showFiltersPanel' | 'panelFilters'>,
 ): string {
   const dataset = datasets.find((d) => d.id === widget.binding.datasetId);
-  const rows = filterDatasetRows(dataset, tabWidgets, filters, datasets);
+  const rows = filterDatasetRows(dataset, tabWidgets, filters, datasets, dashboard);
   const type = widget.type;
   const b = widget.binding;
 

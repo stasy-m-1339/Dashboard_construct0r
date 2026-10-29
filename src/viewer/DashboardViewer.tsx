@@ -118,8 +118,7 @@ export function DashboardViewer({ payload, editable = false, width = 1200 }: Pro
         <div className="dashboard-with-filters" style={{ flex: 1, minHeight: 480 }}>
           {showFiltersPanel && (
             <FiltersPanel
-              widgets={tab.widgets}
-              tabWidgets={tab.widgets}
+              panelFilters={payload.dashboard.panelFilters || []}
               datasets={payload.datasets}
               filters={filters}
               onFilterChange={(id, value) => setFilters((prev) => ({ ...prev, [id]: value }))}
@@ -171,6 +170,7 @@ export function DashboardViewer({ payload, editable = false, width = 1200 }: Pro
                       }
                       theme={theme}
                       interactive
+                      dashboard={payload.dashboard}
                     />
                   </div>
                 </div>
