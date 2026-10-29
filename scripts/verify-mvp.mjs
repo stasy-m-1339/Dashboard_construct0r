@@ -51,15 +51,17 @@ ok(
     blocks.includes('parseImportedBlock'),
 );
 
-// 3) pipelines
-const dataPanel = fs.readFileSync(path.join(root, 'src/studio/DataPanel.tsx'), 'utf8');
+// 3) pipelines / ETL modal (no side Data panel)
+const etlModal = fs.readFileSync(path.join(root, 'src/studio/EtlModal.tsx'), 'utf8');
+const appTsx = fs.readFileSync(path.join(root, 'src/App.tsx'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server/index.ts'), 'utf8');
-ok('CSV + MSSQL UI', dataPanel.includes('+ CSV') && dataPanel.includes('+ MSSQL'));
+ok('no side DataPanel', !appTsx.includes('DataPanel') && !fs.existsSync(path.join(root, 'src/studio/DataPanel.tsx')));
+ok('CSV + MSSQL UI in Данные… modal', etlModal.includes('+ CSV') && etlModal.includes('+ MSSQL'));
 ok(
   'CSV delimiter override UI',
-  dataPanel.includes('Разделитель CSV') &&
-    dataPanel.includes("id: ';'") &&
-    dataPanel.includes('Обновить данные'),
+  etlModal.includes('Разделитель CSV') &&
+    etlModal.includes("id: ';'") &&
+    etlModal.includes('Обновить данные'),
 );
 ok(
   'parseCsvText delimiter API',
@@ -70,7 +72,12 @@ ok(
 );
 ok(
   'pipeline steps UI',
-  ['select-columns', 'filter-rows', 'join', 'aggregate'].every((t) => dataPanel.includes(t)),
+  ['select-columns', 'filter-rows', 'join', 'aggregate'].every((t) => etlModal.includes(t)),
+);
+ok(
+  'Toolbar opens Данные… modal',
+  fs.readFileSync(path.join(root, 'src/studio/Toolbar.tsx'), 'utf8').includes('Данные…') &&
+    fs.readFileSync(path.join(root, 'src/studio/Toolbar.tsx'), 'utf8').includes('EtlModal'),
 );
 ok('MSSQL driver', server.includes("from 'mssql'") && server.includes('/api/refresh'));
 ok('no server cron/scheduler', !/cron|node-cron|schedule\(|setInterval\(/.test(server));

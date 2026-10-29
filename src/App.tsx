@@ -1,7 +1,6 @@
 import { Toolbar } from './studio/Toolbar';
 import { TabBar } from './studio/TabBar';
 import { GridEditor } from './studio/GridEditor';
-import { DataPanel } from './studio/DataPanel';
 import { useStudioStore } from './store/useStudioStore';
 import './studio/studio.css';
 
@@ -20,12 +19,11 @@ export default function App() {
           </button>
         </div>
       )}
-      <div className="studio-body studio-body-wide">
+      <div className="studio-body studio-body-canvas">
         <main className="studio-main">
           <TabBar />
           <GridEditor />
         </main>
-        <DataPanel />
       </div>
     </div>
   );

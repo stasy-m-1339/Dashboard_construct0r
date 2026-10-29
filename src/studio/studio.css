@@ -141,12 +141,13 @@
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 260px minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 0;
 }
 
-.studio-body-wide {
-  grid-template-columns: minmax(0, 1fr) 300px;
+/** Full-width canvas — no side data rail (ETL lives in «Данные…» modal). */
+.studio-body-canvas {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .panel {
@@ -154,11 +155,6 @@
   background: var(--panel);
   padding: 14px;
   overflow: auto;
-}
-
-.data-panel {
-  border-right: none;
-  border-left: 1px solid var(--line);
 }
 
 .panel h2,
@@ -274,9 +270,11 @@
 
 .studio-main {
   min-width: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
 }
 
 .tab-bar {
@@ -598,16 +596,9 @@
 }
 
 @media (max-width: 1100px) {
-  .studio-body {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto;
-  }
-
-  .panel,
-  .data-panel {
-    border: 0;
-    border-bottom: 1px solid var(--line);
-    max-height: 280px;
+  .studio-body,
+  .studio-body-canvas {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .grid-wrap {
@@ -852,8 +843,8 @@
 
 /* —— ETL modal —— */
 .modal-card.etl-modal {
-  max-width: min(1100px, 96vw);
-  max-height: min(92vh, 900px);
+  max-width: min(1200px, 96vw);
+  max-height: min(92vh, 920px);
   width: 100%;
   overflow: auto;
 }
