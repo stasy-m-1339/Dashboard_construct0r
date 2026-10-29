@@ -65,6 +65,11 @@ interface StudioState extends StudioProject {
   addPanelFilters: (filters: Omit<PanelFilterConfig, 'id'>[]) => void;
   removePanelFilter: (filterId: string) => void;
   updatePanelFilter: (filterId: string, patch: Partial<PanelFilterConfig>) => void;
+  /** Replace all panel filters belonging to one dataset (ETL finish). */
+  replaceDatasetPanelFilters: (
+    datasetId: string,
+    filters: Omit<PanelFilterConfig, 'id'>[],
+  ) => void;
   setViewportMode: (v: ViewportMode) => void;
   setActiveTab: (tabId: string) => void;
   addTab: () => void;
@@ -97,7 +102,16 @@ interface StudioState extends StudioProject {
   updateDatasetMeta: (
     datasetId: string,
     patch: Partial<
-      Pick<Dataset, 'fieldRoles' | 'calculatedFields' | 'columns' | 'rows' | 'name'>
+      Pick<
+        Dataset,
+        | 'fieldRoles'
+        | 'fieldSchema'
+        | 'calculatedFields'
+        | 'measureToggles'
+        | 'columns'
+        | 'rows'
+        | 'name'
+      >
     >,
   ) => void;
   setPreviewMode: (v: boolean) => void;
@@ -189,6 +203,24 @@ export const useStudioStore = create<StudioState>()(
             ),
           },
         })),
+
+      replaceDatasetPanelFilters: (datasetId, filters) =>
+        set((s) => {
+          const kept = (s.dashboard.panelFilters || []).filter(
+            (f) => f.datasetId !== datasetId,
+          );
+          const next: PanelFilterConfig[] = [
+            ...kept,
+            ...filters.map((f) => ({ ...f, id: uid('pf') })),
+          ];
+          return {
+            dashboard: {
+              ...s.dashboard,
+              showFiltersPanel: next.length ? true : s.dashboard.showFiltersPanel,
+              panelFilters: next,
+            },
+          };
+        }),
 
       setViewportMode: (viewportMode) => set({ viewportMode }),
 

@@ -460,7 +460,9 @@ export function FiltersPanel({
                 </div>
                 {open && (
                   <div className="filter-body">
-                    {f.kind === 'date' ? (
+                    {f.kind === 'date' ||
+                    f.kind === 'stepper' ||
+                    f.kind === 'double_stepper' ? (
                       <DateFilterBody
                         filter={f}
                         dataset={ds}
@@ -473,6 +475,70 @@ export function FiltersPanel({
                         onUpdateFilter={onUpdateFilter}
                         editable={editable}
                       />
+                    ) : f.kind === 'dropdown' || f.kind === 'toggle' ? (
+                      <select
+                        value={typeof v === 'string' ? v : ''}
+                        onChange={(e) =>
+                          onFilterChange(
+                            f.id,
+                            e.target.value ? e.target.value : undefined,
+                          )
+                        }
+                      >
+                        <option value="">Все</option>
+                        {(ds && f.column
+                          ? uniqueColumnValues(ds.rows, f.column)
+                          : []
+                        ).map((o) => (
+                          <option key={o} value={o}>
+                            {o}
+                          </option>
+                        ))}
+                      </select>
+                    ) : f.kind === 'slider_double' ? (
+                      <div className="fp-date-range">
+                        <input
+                          type="number"
+                          placeholder="от"
+                          value={
+                            typeof v === 'object' && v && !Array.isArray(v)
+                              ? String((v as { min?: number }).min ?? '')
+                              : ''
+                          }
+                          onChange={(e) => {
+                            const min = e.target.value === '' ? undefined : Number(e.target.value);
+                            const max =
+                              typeof v === 'object' && v && !Array.isArray(v)
+                                ? (v as { max?: number }).max
+                                : undefined;
+                            onFilterChange(
+                              f.id,
+                              min == null && max == null ? undefined : { min, max },
+                            );
+                          }}
+                        />
+                        <span className="arrow">—</span>
+                        <input
+                          type="number"
+                          placeholder="до"
+                          value={
+                            typeof v === 'object' && v && !Array.isArray(v)
+                              ? String((v as { max?: number }).max ?? '')
+                              : ''
+                          }
+                          onChange={(e) => {
+                            const max = e.target.value === '' ? undefined : Number(e.target.value);
+                            const min =
+                              typeof v === 'object' && v && !Array.isArray(v)
+                                ? (v as { min?: number }).min
+                                : undefined;
+                            onFilterChange(
+                              f.id,
+                              min == null && max == null ? undefined : { min, max },
+                            );
+                          }}
+                        />
+                      </div>
                     ) : (
                       <SelectFilterBody
                         options={

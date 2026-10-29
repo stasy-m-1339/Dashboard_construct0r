@@ -56,10 +56,29 @@ const etlModal = fs.readFileSync(path.join(root, 'src/studio/EtlModal.tsx'), 'ut
 const appTsx = fs.readFileSync(path.join(root, 'src/App.tsx'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server/index.ts'), 'utf8');
 ok('no side DataPanel', !appTsx.includes('DataPanel') && !fs.existsSync(path.join(root, 'src/studio/DataPanel.tsx')));
-ok('CSV + MSSQL UI in Данные… modal', etlModal.includes('+ CSV') && etlModal.includes('+ MSSQL'));
+ok(
+  'ETL wizard sources CSV/XLSX/SQL',
+  etlModal.includes('+ CSV') && etlModal.includes('+ XLSX') && etlModal.includes('+ SQL'),
+);
+ok(
+  'ETL wizard 2-step Flat Design',
+  etlModal.includes('Шаг') &&
+    etlModal.includes('Далее: Настройка схемы') &&
+    etlModal.includes('Завершить настройку') &&
+    etlModal.includes('Измерения и Фильтры') &&
+    etlModal.includes('Меры и Вычисления') &&
+    etlModal.includes('Переключатели'),
+);
+ok(
+  'ETL filter widgets + formula templates',
+  fs.readFileSync(path.join(root, 'src/shared/etlSchema.ts'), 'utf8').includes('double_stepper') &&
+    fs.readFileSync(path.join(root, 'src/shared/etlSchema.ts'), 'utf8').includes('Мультиселект') &&
+    etlModal.includes('growth_contrib') &&
+    etlModal.includes('+ case'),
+);
 ok(
   'CSV delimiter override UI',
-  etlModal.includes('Разделитель CSV') &&
+  etlModal.includes('Разделитель') &&
     etlModal.includes("id: ';'") &&
     etlModal.includes('Обновить данные'),
 );
@@ -69,10 +88,6 @@ ok(
     'resolveCsvDelimiter',
   ) &&
     fs.readFileSync(path.join(root, 'src/studio/api.ts'), 'utf8').includes('refreshCsvInBrowser'),
-);
-ok(
-  'pipeline steps UI',
-  ['select-columns', 'filter-rows', 'join', 'aggregate'].every((t) => etlModal.includes(t)),
 );
 ok(
   'Toolbar opens Данные… modal',

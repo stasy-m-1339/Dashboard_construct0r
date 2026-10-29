@@ -153,12 +153,81 @@ function evalCalc(
     }
     case 'growth_contrib': {
       // Вклад в прирост: (X_report − X_base) / Sum(X_base) × 100
-      // (как в standalone: Δ / итог базы)
+      // (как в standalone: Δ / итог базы) ≈ (A−B)/ΣB×100
       const report = cellNum(row, calc.a);
       const base = cellNum(row, calc.b);
       const totalBase = calc.b ? ctx.sumBase[calc.b] : 0;
       if (report == null || base == null || !totalBase) return null;
       return ((report - base) / totalBase) * 100;
+    }
+    case 'share': {
+      const a = cellNum(row, calc.a);
+      const total = calc.a ? ctx.sumBase[calc.a] : 0;
+      if (a == null || !total) return null;
+      return (a / total) * 100;
+    }
+    case 'avg':
+    case 'count':
+    case 'count_distinct':
+      // Aggregation intent for charts — materialise source value / 1.
+      return calc.kind === 'count' || calc.kind === 'count_distinct'
+        ? row[calc.a || ''] != null && String(row[calc.a || '']) !== ''
+          ? 1
+          : 0
+        : cellNum(row, calc.a);
+    case 'if': {
+      const raw = row[calc.a || ''];
+      const left = cellNum(row, calc.a);
+      const cmpNum =
+        calc.b != null && calc.b !== '' ? cellNum(row, calc.b) : (calc.value ?? null);
+      const cmpStr = calc.b != null && calc.b !== '' ? String(row[calc.b] ?? '') : String(calc.value ?? '');
+      let ok = false;
+      switch (calc.op || 'eq') {
+        case 'eq':
+          ok =
+            left != null && cmpNum != null
+              ? left === cmpNum
+              : String(raw ?? '') === cmpStr;
+          break;
+        case 'neq':
+          ok =
+            left != null && cmpNum != null
+              ? left !== cmpNum
+              : String(raw ?? '') !== cmpStr;
+          break;
+        case 'gt':
+          ok = left != null && cmpNum != null && left > cmpNum;
+          break;
+        case 'lt':
+          ok = left != null && cmpNum != null && left < cmpNum;
+          break;
+        case 'gte':
+          ok = left != null && cmpNum != null && left >= cmpNum;
+          break;
+        case 'lte':
+          ok = left != null && cmpNum != null && left <= cmpNum;
+          break;
+        case 'between': {
+          const lo = calc.value ?? cmpNum;
+          const hi = calc.value2 ?? null;
+          ok = left != null && lo != null && hi != null && left >= lo && left <= hi;
+          break;
+        }
+        case 'contains':
+          ok = String(raw ?? '')
+            .toLowerCase()
+            .includes(cmpStr.toLowerCase());
+          break;
+        default:
+          ok = false;
+      }
+      return ok ? (calc.thenValue ?? 1) : (calc.elseValue ?? 0);
+    }
+    case 'switch': {
+      const raw = String(row[calc.a || ''] ?? '');
+      const hit = (calc.cases || []).find((c) => c.match === raw);
+      if (hit) return hit.result;
+      return calc.defaultValue ?? null;
     }
     case 'year': {
       const d = parseRowDate(row, calc.a);
@@ -197,11 +266,14 @@ export function applyCalculatedFields(
   const baseCols = dataset.columns.filter((c) => !list.some((f) => f.name === c));
   const columns = [...baseCols, ...list.map((c) => c.name)];
 
-  // Precompute Sum(base) for contribution fields (dataset-level).
+  // Precompute Sum(base) for contribution / share fields (dataset-level).
   const sumBase: Record<string, number> = {};
   for (const calc of list) {
     if (calc.kind === 'growth_contrib' && calc.b && sumBase[calc.b] === undefined) {
       sumBase[calc.b] = sumColumn(dataset.rows, calc.b);
+    }
+    if (calc.kind === 'share' && calc.a && sumBase[calc.a] === undefined) {
+      sumBase[calc.a] = sumColumn(dataset.rows, calc.a);
     }
   }
 
@@ -225,7 +297,7 @@ export function applyCalculatedFields(
   };
 }
 
-/** Enrich freshly refreshed datasets: keep prior roles/calcs, suggest missing roles, apply calcs. */
+/** Enrich freshly refreshed datasets: keep prior roles/calcs/schema, suggest missing roles, apply calcs. */
 export function enrichDatasets(fresh: Dataset[], previous: Dataset[]): Dataset[] {
   const prevById = new Map(previous.map((d) => [d.id, d]));
   const prevByName = new Map(previous.map((d) => [d.name, d]));
@@ -234,7 +306,16 @@ export function enrichDatasets(fresh: Dataset[], previous: Dataset[]): Dataset[]
     const suggested = suggestFieldRoles(ds);
     const fieldRoles = mergeFieldRoles(ds.columns, prev?.fieldRoles, suggested);
     const calcs = prev?.calculatedFields || [];
-    return applyCalculatedFields({ ...ds, fieldRoles }, calcs);
+    const applied = applyCalculatedFields(
+      {
+        ...ds,
+        fieldRoles,
+        fieldSchema: prev?.fieldSchema,
+        measureToggles: prev?.measureToggles,
+      },
+      calcs,
+    );
+    return applied;
   });
 }
 
@@ -258,28 +339,54 @@ export const ROLE_LABELS: Record<FieldRole, string> = {
 };
 
 export const CALC_KIND_LABELS: Record<CalculatedField['kind'], string> = {
-  sum: 'Копия / число',
+  sum: 'SUM',
+  avg: 'AVG',
+  count: 'COUNT',
+  count_distinct: 'COUNT DISTINCT',
   ratio: 'Отношение (a÷b)',
+  share: 'Доля (a / Σa × 100)',
   pct: 'Процент (a÷b×100)',
   delta: 'Разница (a−b)',
-  growth: 'Прирост ((отчёт−база)/база×100)',
-  growth_contrib: 'Вклад в прирост (Δ / Σбаза×100)',
+  growth: 'Прирост ((A−B)/B×100)',
+  growth_contrib: 'Вклад (A−B)/ΣB×100',
   year: 'Год из даты',
   month: 'Месяц из даты',
   iso_week: 'ISO-неделя из даты',
+  if: 'IF',
+  switch: 'SWITCH',
   const: 'Константа',
 };
 
-/** Ordered kinds for the ETL dropdown (common BI first). */
+/** Ordered kinds for the ETL measure templates (Flat Design prototype). */
 export const CALC_KIND_ORDER: CalculatedField['kind'][] = [
-  'growth',
   'growth_contrib',
+  'growth',
   'delta',
+  'share',
+  'sum',
+  'avg',
+  'count',
+  'count_distinct',
+  'if',
+  'switch',
   'ratio',
   'pct',
   'iso_week',
   'year',
   'month',
-  'sum',
   'const',
 ];
+
+/** Short formula hints under template cards. */
+export const CALC_KIND_FORMULA: Partial<Record<CalculatedField['kind'], string>> = {
+  growth_contrib: '(A − B) / ΣB × 100',
+  growth: '(A − B) / B × 100',
+  delta: 'A − B',
+  share: 'A / ΣA × 100',
+  sum: 'SUM(A)',
+  avg: 'AVG(A)',
+  count: 'COUNT(A)',
+  count_distinct: 'COUNT DISTINCT(A)',
+  if: 'IF(cond, then, else)',
+  switch: 'SWITCH(A, …)',
+};

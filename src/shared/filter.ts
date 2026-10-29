@@ -11,7 +11,7 @@ import { isFilterWidget } from './blocks';
 function applyColumnFilter(
   row: DatasetRow,
   column: string,
-  kind: 'select' | 'chips' | 'date',
+  kind: 'select' | 'chips' | 'date' | 'range',
   value: FilterState[string],
 ): boolean {
   if (value === undefined || value === '' || value === null) return true;
@@ -24,6 +24,15 @@ function applyColumnFilter(
       return value.map(String).includes(cellStr);
     }
     return String(value) === cellStr;
+  }
+
+  if (kind === 'range') {
+    const range = value as { min?: number; max?: number };
+    const n = typeof cell === 'number' ? cell : Number(String(cell).replace(/\s/g, '').replace(',', '.'));
+    if (Number.isNaN(n)) return true;
+    if (range.min != null && n < range.min) return false;
+    if (range.max != null && n > range.max) return false;
+    return true;
   }
 
   if (kind === 'date') {
@@ -65,10 +74,21 @@ function rowMatchesPanelFilters(
 ): boolean {
   for (const f of panelFilters) {
     if (!f.column) continue;
-    const kind = f.kind === 'date' ? 'date' : 'select';
+    const kind =
+      f.kind === 'date' || f.kind === 'stepper' || f.kind === 'double_stepper'
+        ? f.kind === 'date' || isLikelyDateFilter(f)
+          ? 'date'
+          : 'select'
+        : f.kind === 'slider_double'
+          ? 'range'
+          : 'select';
     if (!applyColumnFilter(row, f.column, kind, filters[f.id])) return false;
   }
   return true;
+}
+
+function isLikelyDateFilter(f: PanelFilterConfig): boolean {
+  return f.kind === 'date' || /date|дата|недел|week|month|месяц/i.test(f.column);
 }
 
 /**
@@ -128,17 +148,30 @@ export function uniqueColumnValues(rows: DatasetRow[], column: string): string[]
   return Array.from(set).sort((a, b) => a.localeCompare(b, 'ru'));
 }
 
+function looksLikeDateString(raw: string): boolean {
+  const s = raw.trim();
+  if (!s) return false;
+  // Pure numbers are never dates (avoids Date.parse("2") / "120000" false positives).
+  if (/^-?\d+([.,]\d+)?$/.test(s)) return false;
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return true;
+  if (/^\d{1,2}[./]\d{1,2}[./]\d{2,4}/.test(s)) return true;
+  const t = Date.parse(s);
+  return !Number.isNaN(t);
+}
+
 /** Heuristic: column looks like dates. */
 export function isDateLikeColumn(dataset: Dataset, column: string): boolean {
-  if (/date|time|день|дата|period|недел|month|месяц/i.test(column)) return true;
+  if (/^(date|time|день|дата|period|недел)/i.test(column) || /месяц|month|week/i.test(column)) {
+    // Name hint only if values also look date-like or column is explicitly date*
+    if (/^(date|дата)/i.test(column)) return true;
+  }
   let parsed = 0;
   let checked = 0;
   for (const row of dataset.rows.slice(0, 40)) {
     const v = row[column];
     if (v == null || v === '') continue;
     checked += 1;
-    const t = Date.parse(String(v));
-    if (!Number.isNaN(t)) parsed += 1;
+    if (looksLikeDateString(String(v))) parsed += 1;
   }
   return checked > 0 && parsed / checked >= 0.6;
 }

@@ -136,6 +136,13 @@ export async function fetchSampleCsv(): Promise<string> {
   return res.text();
 }
 
+/** Semicolon-delimited RU sample (Показатель;Месяц;…). */
+export async function fetchSemicolonSampleCsv(): Promise<string> {
+  const res = await fetch(`${API}/api/sample-semicolon-csv`);
+  if (!res.ok) throw new Error('Не удалось загрузить semicolon CSV');
+  return res.text();
+}
+
 export function downloadTextFile(fileName: string, content: string, mime = 'text/html') {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);

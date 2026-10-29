@@ -1,30 +1,66 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import { useStudioStore } from '../store/useStudioStore';
 import type {
   CalculatedField,
+  CalcCompareOp,
+  CalcExprKind,
   CsvDelimiter,
+  Dataset,
+  FieldDataType,
+  FieldFormatKind,
   FieldRole,
-  PipelineStep,
+  FieldSchemaMap,
+  FilterWidgetKind,
+  MeasureToggleGroup,
   SourceCsv,
   SourceMssql,
 } from '../shared/types';
 import {
+  CALC_KIND_FORMULA,
   CALC_KIND_LABELS,
-  CALC_KIND_ORDER,
-  ROLE_LABELS,
   applyCalculatedFields,
   suggestFieldRoles,
 } from '../shared/fieldMeta';
+import {
+  DATA_TYPE_OPTIONS,
+  FIELD_FORMAT_OPTIONS,
+  FILTER_WIDGET_OPTIONS,
+  buildFieldSchema,
+  columnSamples,
+  fieldRolesFromSchema,
+  panelFiltersFromSchema,
+  patchSchemaField,
+  uniqueColumnValues,
+} from '../shared/etlSchema';
 import { detectCsvDelimiter } from '../shared/pipelineRunner';
-import { refreshDatasets } from './api';
-import { FieldSelect } from './FieldSelect';
+import { formatWeekLabel, uniqueWeeks } from '../shared/filter';
+import { fetchSemicolonSampleCsv, refreshDatasets } from './api';
+import { ROLE_LABELS } from '../shared/fieldMeta';
+import './etl/etl-wizard.css';
 
 const DELIM_OPTIONS: { id: CsvDelimiter; label: string }[] = [
   { id: 'auto', label: 'Авто' },
-  { id: ';', label: 'Точка с запятой (;)' },
-  { id: ',', label: 'Запятая (,)' },
-  { id: '\t', label: 'Таб' },
+  { id: ';', label: ';' },
+  { id: ',', label: ',' },
+  { id: '\t', label: 'Tab' },
 ];
+
+const MEASURE_TEMPLATES: CalcExprKind[] = [
+  'growth_contrib',
+  'growth',
+  'delta',
+  'share',
+  'sum',
+  'avg',
+  'count',
+  'count_distinct',
+  'if',
+  'switch',
+];
+
+type WizardStep = 1 | 2;
+type SchemaTab = 'dims' | 'measures' | 'toggles';
 
 interface Props {
   onClose: () => void;
@@ -34,28 +70,234 @@ function uid(prefix = 'id'): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+function sheetToCsv(buf: ArrayBuffer): string {
+  const wb = XLSX.read(buf, { type: 'array' });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  return XLSX.utils.sheet_to_csv(sheet, { FS: ';' });
+}
+
+/** Live preview widgets for schema table. */
+function FieldPreview({
+  dataset,
+  column,
+  widget,
+}: {
+  dataset: Dataset;
+  column: string;
+  widget: FilterWidgetKind;
+}) {
+  const values = useMemo(() => uniqueColumnValues(dataset, column, 80), [dataset, column]);
+  const weeks = useMemo(() => uniqueWeeks(dataset.rows, column), [dataset, column]);
+  const [q, setQ] = useState('');
+  const [picked, setPicked] = useState<string[]>([]);
+  const [single, setSingle] = useState(values[0] || '');
+  const [weekIdx, setWeekIdx] = useState(Math.max(0, weeks.length - 1));
+  const [weekIdx2, setWeekIdx2] = useState(0);
+  const [toggleOn, setToggleOn] = useState(false);
+  const nums = useMemo(() => {
+    const arr: number[] = [];
+    for (const v of values) {
+      const n = Number(String(v).replace(/\s/g, '').replace(',', '.'));
+      if (!Number.isNaN(n)) arr.push(n);
+    }
+    return arr;
+  }, [values]);
+  const min = nums.length ? Math.min(...nums) : 0;
+  const max = nums.length ? Math.max(...nums) : 100;
+  const [range, setRange] = useState<[number, number]>([min, max]);
+
+  if (widget === 'none') {
+    return <span className="etl-empty" style={{ padding: 0 }}>—</span>;
+  }
+
+  if (widget === 'multi') {
+    const filtered = values.filter((v) => v.toLowerCase().includes(q.toLowerCase()));
+    return (
+      <div className="etl-preview">
+        <input
+          className="etl-preview-search"
+          placeholder="Поиск…"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <div className="etl-multi-list">
+          {filtered.map((v) => {
+            const on = picked.includes(v);
+            return (
+              <label key={v} className={`etl-multi-opt${on ? ' on' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={on}
+                  onChange={() =>
+                    setPicked((prev) =>
+                      on ? prev.filter((x) => x !== v) : [...prev, v],
+                    )
+                  }
+                />
+                <span>{v}</span>
+              </label>
+            );
+          })}
+          {!filtered.length && <span className="etl-empty">Нет значений</span>}
+        </div>
+      </div>
+    );
+  }
+
+  if (widget === 'dropdown') {
+    return (
+      <select value={single} onChange={(e) => setSingle(e.target.value)}>
+        {values.map((v) => (
+          <option key={v} value={v}>
+            {v}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
+  if (widget === 'stepper' || widget === 'double_stepper') {
+    const list = weeks.length ? weeks : values;
+    if (!list.length) return <span className="etl-empty">Нет значений</span>;
+    const idx = Math.min(weekIdx, list.length - 1);
+    const label = weeks.length ? formatWeekLabel(list[idx]) : list[idx];
+    return (
+      <div className="etl-preview">
+        <div className="etl-stepper-row">
+          <button type="button" onClick={() => setWeekIdx((i) => Math.max(0, i - 1))}>
+            ‹
+          </button>
+          <span className="val">{label}</span>
+          <button
+            type="button"
+            onClick={() => setWeekIdx((i) => Math.min(list.length - 1, i + 1))}
+          >
+            ›
+          </button>
+        </div>
+        {widget === 'double_stepper' && (
+          <div className="etl-stepper-row">
+            <button type="button" onClick={() => setWeekIdx2((i) => Math.max(0, i - 1))}>
+              ‹
+            </button>
+            <span className="val">
+              {weeks.length
+                ? formatWeekLabel(list[Math.min(weekIdx2, list.length - 1)])
+                : list[Math.min(weekIdx2, list.length - 1)]}
+            </span>
+            <button
+              type="button"
+              onClick={() => setWeekIdx2((i) => Math.min(list.length - 1, i + 1))}
+            >
+              ›
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (widget === 'toggle') {
+    const a = values[0] || 'Выкл';
+    const b = values[1] || 'Вкл';
+    return (
+      <div className="etl-toggle-preview">
+        <button type="button" className={!toggleOn ? 'on' : ''} onClick={() => setToggleOn(false)}>
+          {a}
+        </button>
+        <button type="button" className={toggleOn ? 'on' : ''} onClick={() => setToggleOn(true)}>
+          {b}
+        </button>
+      </div>
+    );
+  }
+
+  if (widget === 'slider_double') {
+    return (
+      <div className="etl-slider-preview">
+        <span>
+          {range[0]} — {range[1]}
+        </span>
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={range[0]}
+          onChange={(e) => setRange(([_, hi]) => [Number(e.target.value), hi])}
+        />
+        <input
+          type="range"
+          min={min}
+          max={max}
+          value={range[1]}
+          onChange={(e) => setRange(([lo]) => [lo, Number(e.target.value)])}
+        />
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function DropSlot({
+  label,
+  value,
+  onDropField,
+}: {
+  label: string;
+  value?: string;
+  onDropField: (field: string) => void;
+}) {
+  const [over, setOver] = useState(false);
+  return (
+    <div
+      className={`etl-slot${value ? ' filled' : ''}${over ? ' over' : ''}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const field = e.dataTransfer.getData('text/etl-field');
+        if (field) onDropField(field);
+      }}
+      title="Перетащите поле из пула"
+    >
+      {value || label}
+    </div>
+  );
+}
+
 export function EtlModal({ onClose }: Props) {
   const sources = useStudioStore((s) => s.sources);
   const pipelines = useStudioStore((s) => s.pipelines);
   const datasets = useStudioStore((s) => s.datasets);
   const addCsvSource = useStudioStore((s) => s.addCsvSource);
   const addMssqlSource = useStudioStore((s) => s.addMssqlSource);
-  const addPipeline = useStudioStore((s) => s.addPipeline);
   const updateSource = useStudioStore((s) => s.updateSource);
   const removeSource = useStudioStore((s) => s.removeSource);
-  const updatePipeline = useStudioStore((s) => s.updatePipeline);
-  const removePipeline = useStudioStore((s) => s.removePipeline);
   const setDatasets = useStudioStore((s) => s.setDatasets);
+  const updateDatasetMeta = useStudioStore((s) => s.updateDatasetMeta);
   const setLastError = useStudioStore((s) => s.setLastError);
   const setRefreshing = useStudioStore((s) => s.setRefreshing);
   const refreshing = useStudioStore((s) => s.refreshing);
-  const updateDatasetMeta = useStudioStore((s) => s.updateDatasetMeta);
+  const replaceDatasetPanelFilters = useStudioStore((s) => s.replaceDatasetPanelFilters);
 
-  const fileRef = useRef<HTMLInputElement>(null);
+  const csvRef = useRef<HTMLInputElement>(null);
+  const xlsxRef = useRef<HTMLInputElement>(null);
+
+  const [step, setStep] = useState<WizardStep>(1);
+  const [tab, setTab] = useState<SchemaTab>('dims');
+  const [csvDelim, setCsvDelim] = useState<CsvDelimiter>(';');
+  const [activeSourceId, setActiveSourceId] = useState<string>('');
   const [datasetId, setDatasetId] = useState(datasets[0]?.id || '');
-  const [csvDelim, setCsvDelim] = useState<CsvDelimiter>('auto');
-  const [showMssql, setShowMssql] = useState(false);
-  const [mssqlForm, setMssqlForm] = useState({
+  const [schema, setSchema] = useState<FieldSchemaMap>({});
+  const [calcs, setCalcs] = useState<CalculatedField[]>([]);
+  const [toggles, setToggles] = useState<MeasureToggleGroup[]>([]);
+  const [showSql, setShowSql] = useState(false);
+  const [sqlForm, setSqlForm] = useState({
     name: 'MSSQL',
     server: '',
     database: '',
@@ -63,97 +305,62 @@ export function EtlModal({ onClose }: Props) {
     password: '',
     port: 1433,
   });
-  const [calcDraft, setCalcDraft] = useState<Omit<CalculatedField, 'id'>>({
-    name: '',
-    kind: 'growth',
-    a: '',
-    b: '',
-    withYear: false,
-  });
 
-  const isDateKind =
-    calcDraft.kind === 'year' ||
-    calcDraft.kind === 'month' ||
-    calcDraft.kind === 'iso_week';
-  const needsBase =
-    calcDraft.kind === 'ratio' ||
-    calcDraft.kind === 'pct' ||
-    calcDraft.kind === 'delta' ||
-    calcDraft.kind === 'growth' ||
-    calcDraft.kind === 'growth_contrib';
-  const fieldALabel =
-    calcDraft.kind === 'growth' || calcDraft.kind === 'growth_contrib'
-      ? 'Отчёт / факт (X_report)'
-      : isDateKind
-        ? 'Колонка даты'
-        : 'Поле A';
-  const fieldBLabel =
-    calcDraft.kind === 'growth' || calcDraft.kind === 'growth_contrib'
-      ? 'База / план (X_base)'
-      : 'Поле B';
-
-  const ds = useMemo(
-    () => datasets.find((d) => d.id === datasetId) || datasets[0],
-    [datasets, datasetId],
-  );
-
-  const patchStep = (pipelineId: string, stepId: string, patch: Partial<PipelineStep>) => {
-    const pipeline = pipelines.find((p) => p.id === pipelineId);
-    if (!pipeline) return;
-    updatePipeline(pipelineId, {
-      steps: pipeline.steps.map((st) =>
-        st.id === stepId ? ({ ...st, ...patch } as PipelineStep) : st,
-      ),
-    });
-  };
-
-  const addStep = (pipelineId: string, type: PipelineStep['type']) => {
-    const pipeline = pipelines.find((p) => p.id === pipelineId);
-    if (!pipeline) return;
-    let step: PipelineStep;
-    switch (type) {
-      case 'select-columns':
-        step = { id: uid('step'), type, columns: [] };
-        break;
-      case 'filter-rows':
-        step = { id: uid('step'), type, column: '', op: 'eq', value: '' };
-        break;
-      case 'join':
-        step = {
-          id: uid('step'),
-          type,
-          rightSourceId: sources.find((s) => s.id !== pipeline.sourceId)?.id || '',
-          leftKey: '',
-          rightKey: '',
-          how: 'left',
-        };
-        break;
-      case 'aggregate':
-        step = {
-          id: uid('step'),
-          type,
-          groupBy: [],
-          metrics: [{ column: '', fn: 'sum', as: 'sum_value' }],
-        };
-        break;
-      case 'sql':
-        step = { id: uid('step'), type, query: 'SELECT TOP 100 * FROM dbo.YourTable' };
-        break;
+  const activeSource = sources.find((s) => s.id === activeSourceId) || sources[0];
+  const ds = useMemo(() => {
+    if (!datasets.length) return undefined;
+    const bySource = pipelines.find((p) => p.sourceId === (activeSource?.id || ''));
+    if (bySource) {
+      const matched = datasets.find((d) => d.id === bySource.datasetId);
+      if (matched) return matched;
     }
-    updatePipeline(pipelineId, { steps: [...pipeline.steps, step] });
-  };
+    return datasets.find((d) => d.id === datasetId) || datasets[0];
+  }, [datasets, datasetId, pipelines, activeSource?.id]);
 
-  const removeStep = (pipelineId: string, stepId: string) => {
-    const pipeline = pipelines.find((p) => p.id === pipelineId);
-    if (!pipeline) return;
-    updatePipeline(pipelineId, { steps: pipeline.steps.filter((s) => s.id !== stepId) });
-  };
+  // Sync local schema draft when dataset / active source changes
+  useEffect(() => {
+    if (!ds) {
+      setSchema({});
+      setCalcs([]);
+      setToggles([]);
+      return;
+    }
+    setDatasetId(ds.id);
+    const roles = ds.fieldRoles || suggestFieldRoles(ds);
+    const built = buildFieldSchema({ ...ds, fieldRoles: roles }, ds.fieldSchema);
+    setSchema(built);
+    setCalcs(ds.calculatedFields || []);
+    setToggles(ds.measureToggles || []);
+  }, [ds?.id, ds?.updatedAt, ds?.columns?.join('|')]);
+
+  useEffect(() => {
+    if (!activeSourceId && sources[0]) setActiveSourceId(sources[0].id);
+  }, [sources, activeSourceId]);
+
+  // When user picks another source, jump dataset binding with it
+  useEffect(() => {
+    if (!activeSource) return;
+    const pipe = pipelines.find((p) => p.sourceId === activeSource.id);
+    if (pipe) setDatasetId(pipe.datasetId);
+  }, [activeSource?.id, pipelines]);
+
+  const dimFields = useMemo(() => {
+    if (!ds) return [] as string[];
+    return ds.columns.filter((c) => {
+      const r = schema[c]?.role || ds.fieldRoles?.[c];
+      return r === 'dimension' || r === 'filter' || r === 'date';
+    });
+  }, [ds, schema]);
+
+  const measureFields = useMemo(() => {
+    if (!ds) return [] as string[];
+    return ds.columns.filter((c) => (schema[c]?.role || ds.fieldRoles?.[c]) === 'measure');
+  }, [ds, schema]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     setLastError(null);
     try {
-      // Always read latest sources (incl. delimiter) so «Обновить» re-parses CSV.
       const state = useStudioStore.getState();
       const { datasets: next, warnings } = await refreshDatasets(
         state.sources,
@@ -170,86 +377,138 @@ export function EtlModal({ onClose }: Props) {
     }
   };
 
+  const ingestText = async (name: string, fileName: string, text: string, delim: CsvDelimiter) => {
+    const detected = detectCsvDelimiter(text);
+    const d: CsvDelimiter = delim !== 'auto' ? delim : detected === ',' ? 'auto' : detected;
+    addCsvSource(name, fileName, text, d);
+    await onRefresh();
+    const state = useStudioStore.getState();
+    const last = state.sources[state.sources.length - 1];
+    if (last) setActiveSourceId(last.id);
+  };
+
   const uploadCsv = async (file: File) => {
     const text = await file.text();
-    const detected = detectCsvDelimiter(text);
-    // Prefer UI override; pin detected `;`/`tab` so refresh is stable across API restarts.
-    const delim: CsvDelimiter =
-      csvDelim !== 'auto' ? csvDelim : detected === ',' ? 'auto' : detected;
-    addCsvSource(file.name.replace(/\.csv$/i, ''), file.name, text, delim);
-    await onRefresh();
+    await ingestText(file.name.replace(/\.csv$/i, ''), file.name, text, csvDelim);
   };
 
-  const setRole = (column: string, role: FieldRole) => {
+  const uploadXlsx = async (file: File) => {
+    const buf = await file.arrayBuffer();
+    const csv = sheetToCsv(buf);
+    await ingestText(file.name.replace(/\.xlsx?$/i, ''), file.name, csv, ';');
+  };
+
+  const loadSemicolonDemo = async () => {
+    const text = await fetchSemicolonSampleCsv();
+    await ingestText('пфп44', 'pfp44.csv', text, ';');
+  };
+
+  const finishSetup = () => {
     if (!ds) return;
+    const roles = fieldRolesFromSchema(schema);
+    const applied = applyCalculatedFields(
+      {
+        ...ds,
+        fieldRoles: roles,
+        fieldSchema: schema,
+        calculatedFields: calcs,
+        measureToggles: toggles,
+      },
+      calcs,
+    );
     updateDatasetMeta(ds.id, {
-      fieldRoles: { ...(ds.fieldRoles || {}), [column]: role },
+      fieldRoles: applied.fieldRoles,
+      fieldSchema: schema,
+      calculatedFields: calcs,
+      measureToggles: toggles,
+      columns: applied.columns,
+      rows: applied.rows,
     });
+
+    // Replace panel filters for this dataset from schema widgets
+    const nextFilters = panelFiltersFromSchema(applied, schema);
+    replaceDatasetPanelFilters(ds.id, nextFilters);
+
+    onClose();
   };
 
-  const resuggest = () => {
-    if (!ds) return;
-    updateDatasetMeta(ds.id, { fieldRoles: suggestFieldRoles(ds) });
-  };
-
-  const addCalc = () => {
-    if (!ds || !calcDraft.name.trim()) return;
-    const name = calcDraft.name.trim();
-    if (ds.columns.includes(name) && !(ds.calculatedFields || []).some((c) => c.name === name)) {
-      setLastError(`Колонка «${name}» уже есть`);
-      return;
+  const addCalcTemplate = (kind: CalcExprKind) => {
+    const nameBase =
+      kind === 'growth_contrib'
+        ? 'vklad_pct'
+        : kind === 'growth'
+          ? 'prirost_pct'
+          : kind === 'share'
+            ? 'dolya_pct'
+            : kind === 'delta'
+              ? 'raznica'
+              : kind;
+    let name = nameBase;
+    let i = 2;
+    const existing = new Set([...(ds?.columns || []), ...calcs.map((c) => c.name)]);
+    while (existing.has(name)) {
+      name = `${nameBase}_${i++}`;
     }
-    const nextCalcs = [
-      ...(ds.calculatedFields || []).filter((c) => c.name !== name),
-      { ...calcDraft, id: uid('calc'), name },
-    ];
-    const applied = applyCalculatedFields(
-      { ...ds, calculatedFields: nextCalcs },
-      nextCalcs,
-    );
-    updateDatasetMeta(ds.id, {
-      calculatedFields: nextCalcs,
-      columns: applied.columns,
-      rows: applied.rows,
-      fieldRoles: applied.fieldRoles,
-    });
-    setCalcDraft({ name: '', kind: 'growth', a: '', b: '', withYear: false });
+    const draft: CalculatedField = {
+      id: uid('calc'),
+      name,
+      kind,
+      a: measureFields[0] || dimFields[0] || '',
+      b: measureFields[1] || measureFields[0] || '',
+      op: kind === 'if' ? 'between' : undefined,
+      value: kind === 'if' ? 0 : undefined,
+      value2: kind === 'if' ? 100 : undefined,
+      thenValue: kind === 'if' ? 1 : undefined,
+      elseValue: kind === 'if' ? 0 : undefined,
+      cases:
+        kind === 'switch'
+          ? [
+              { id: uid('case'), match: '', result: '' },
+              { id: uid('case'), match: '', result: '' },
+            ]
+          : undefined,
+      defaultValue: kind === 'switch' ? '' : undefined,
+    };
+    setCalcs((list) => [...list, draft]);
   };
 
-  const removeCalc = (id: string) => {
-    if (!ds) return;
-    const nextCalcs = (ds.calculatedFields || []).filter((c) => c.id !== id);
-    // Drop calc column from rows
-    const dropNames = new Set(
-      (ds.calculatedFields || []).filter((c) => c.id === id).map((c) => c.name),
-    );
-    const columns = ds.columns.filter((c) => !dropNames.has(c));
-    const rows = ds.rows.map((r) => {
-      const next = { ...r };
-      for (const n of dropNames) delete next[n];
-      return next;
-    });
-    const roles = { ...(ds.fieldRoles || {}) };
-    for (const n of dropNames) delete roles[n];
-    const applied = applyCalculatedFields(
-      { ...ds, columns, rows, fieldRoles: roles, calculatedFields: nextCalcs },
-      nextCalcs,
-    );
-    updateDatasetMeta(ds.id, {
-      calculatedFields: nextCalcs,
-      columns: applied.columns,
-      rows: applied.rows,
-      fieldRoles: applied.fieldRoles,
-    });
+  const patchCalc = (id: string, patch: Partial<CalculatedField>) => {
+    setCalcs((list) => list.map((c) => (c.id === id ? { ...c, ...patch } : c)));
+  };
+
+  const removeCalc = (id: string) => setCalcs((list) => list.filter((c) => c.id !== id));
+
+  const addToggleGroup = () => {
+    setToggles((list) => [
+      ...list,
+      {
+        id: uid('tg'),
+        name: 'НДС',
+        options: [
+          { id: uid('opt'), label: 'Без НДС', field: measureFields[0] || '' },
+          { id: uid('opt'), label: 'С НДС', field: measureFields[1] || measureFields[0] || '' },
+        ],
+      },
+    ]);
   };
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="modal-card etl-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-head">
-          <h2>Данные / ETL</h2>
-          <div className="row-actions">
-            <button type="button" className="btn" disabled={refreshing} onClick={() => void onRefresh()}>
+    <div className="etl-wiz-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="etl-wiz" onClick={(e) => e.stopPropagation()}>
+        <div className="etl-wiz-head">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <h2>Данные / ETL</h2>
+            <span className="etl-wiz-step-badge">
+              Шаг {step} из 2: {step === 1 ? 'Типы данных' : 'Настройка схемы'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              type="button"
+              className="btn"
+              disabled={refreshing || !sources.length}
+              onClick={() => void onRefresh()}
+            >
               {refreshing ? 'Обновление…' : 'Обновить данные'}
             </button>
             <button type="button" className="btn ghost" onClick={onClose}>
@@ -258,105 +517,28 @@ export function EtlModal({ onClose }: Props) {
           </div>
         </div>
 
-        <div className="etl-grid">
-          <section className="etl-section">
-            <h3>Источники</h3>
-            <div className="row-actions" style={{ flexWrap: 'wrap', alignItems: 'center' }}>
-              <button type="button" className="btn" onClick={() => fileRef.current?.click()}>
-                + CSV
-              </button>
-              <button type="button" className="btn ghost" onClick={() => setShowMssql((v) => !v)}>
-                + MSSQL
-              </button>
-              <label className="field-inline" title="Разделитель для новых CSV">
-                Разделитель
-                <select
-                  value={csvDelim}
-                  onChange={(e) => setCsvDelim(e.target.value as CsvDelimiter)}
-                >
-                  {DELIM_OPTIONS.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".csv,text/csv"
-                hidden
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  await uploadCsv(file);
-                  e.target.value = '';
-                }}
-              />
-            </div>
-            <p className="hint">
-              Для Excel/RU CSV обычно «;». После загрузки данные перечитываются сразу. Если колонка
-              одна — смените разделитель у источника и нажмите «Обновить данные».
-            </p>
-            {showMssql && (
-              <div className="mssql-form">
-                {(
-                  [
-                    ['name', 'Имя'],
-                    ['server', 'Сервер'],
-                    ['database', 'БД'],
-                    ['user', 'Логин'],
-                    ['password', 'Пароль'],
-                  ] as const
-                ).map(([k, lab]) => (
-                  <label key={k}>
-                    {lab}
-                    <input
-                      type={k === 'password' ? 'password' : 'text'}
-                      value={mssqlForm[k]}
-                      onChange={(e) => setMssqlForm((f) => ({ ...f, [k]: e.target.value }))}
-                    />
-                  </label>
-                ))}
-                <label>
-                  Порт
-                  <input
-                    type="number"
-                    value={mssqlForm.port}
-                    onChange={(e) =>
-                      setMssqlForm((f) => ({ ...f, port: Number(e.target.value) || 1433 }))
-                    }
-                  />
-                </label>
-                <button
-                  type="button"
-                  className="btn primary"
-                  onClick={() => {
-                    const payload: Omit<SourceMssql, 'id' | 'type'> = { ...mssqlForm };
-                    addMssqlSource(payload);
-                    setShowMssql(false);
-                  }}
-                >
-                  Добавить MSSQL
-                </button>
-              </div>
-            )}
-            <ul className="source-list">
-              {sources.map((s) => (
-                <li key={s.id}>
-                  <div className="source-head">
-                    <strong>
-                      {s.type.toUpperCase()}: {s.name}
-                    </strong>
-                    <button type="button" className="btn ghost" onClick={() => removeSource(s.id)}>
-                      ×
+        {step === 1 ? (
+          <div className="etl-wiz-body">
+            <aside className="etl-wiz-side">
+              <h3>Источники</h3>
+              <ul className="etl-source-list">
+                {sources.map((s) => (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      className={`etl-source-item${(activeSource?.id || '') === s.id ? ' active' : ''}`}
+                      onClick={() => setActiveSourceId(s.id)}
+                    >
+                      <strong>
+                        {s.type === 'csv' ? 'CSV' : 'SQL'}: {s.name}
+                      </strong>
+                      <span className="meta">
+                        {s.type === 'csv' ? (s as SourceCsv).fileName : `${s.server}/${s.database}`}
+                      </span>
                     </button>
-                  </div>
-                  {s.type === 'csv' && (
-                    <>
-                      <div className="muted">{(s as SourceCsv).fileName}</div>
-                      <label>
-                        Разделитель CSV
+                    {s.type === 'csv' && (activeSource?.id || '') === s.id && (
+                      <div className="etl-delim-row">
+                        Разделитель
                         <select
                           value={(s as SourceCsv).delimiter || 'auto'}
                           onChange={(e) =>
@@ -371,600 +553,724 @@ export function EtlModal({ onClose }: Props) {
                             </option>
                           ))}
                         </select>
-                      </label>
-                    </>
-                  )}
-                  {s.type === 'mssql' && (
-                    <details>
-                      <summary>Параметры (пароль не экспортируется)</summary>
-                      <label>
-                        Имя
-                        <input
-                          value={s.name}
-                          onChange={(e) => updateSource(s.id, { name: e.target.value })}
-                        />
-                      </label>
-                      <label>
-                        Сервер
-                        <input
-                          value={s.server}
-                          onChange={(e) => updateSource(s.id, { server: e.target.value })}
-                        />
-                      </label>
-                      <label>
-                        База
-                        <input
-                          value={s.database}
-                          onChange={(e) => updateSource(s.id, { database: e.target.value })}
-                        />
-                      </label>
-                      <label>
-                        Логин
-                        <input
-                          value={s.user}
-                          onChange={(e) => updateSource(s.id, { user: e.target.value })}
-                        />
-                      </label>
-                      <label>
-                        Пароль
-                        <input
-                          type="password"
-                          value={s.password}
-                          onChange={(e) => updateSource(s.id, { password: e.target.value })}
-                          autoComplete="off"
-                        />
-                      </label>
-                    </details>
-                  )}
-                </li>
-              ))}
-              {!sources.length && <li className="muted">Пока нет источников</li>}
-            </ul>
-
-            <h3>Конвейеры → датасеты</h3>
-            <button
-              type="button"
-              className="btn"
-              disabled={!sources.length}
-              onClick={() => addPipeline()}
-            >
-              + Конвейер
-            </button>
-            <ul className="source-list">
-              {pipelines.map((p) => {
-                const source = sources.find((s) => s.id === p.sourceId);
-                return (
-                  <li key={p.id}>
-                    <div className="source-head">
-                      <input
-                        value={p.name}
-                        onChange={(e) => updatePipeline(p.id, { name: e.target.value })}
-                      />
-                      <button
-                        type="button"
-                        className="btn ghost"
-                        onClick={() => removePipeline(p.id)}
-                      >
-                        ×
-                      </button>
-                    </div>
-                    <label>
-                      Источник
-                      <select
-                        value={p.sourceId}
-                        onChange={(e) => updatePipeline(p.id, { sourceId: e.target.value })}
-                      >
-                        <option value="">—</option>
-                        {sources.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.type.toUpperCase()}: {s.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <div className="steps">
-                      <div className="muted" style={{ marginBottom: 6 }}>
-                        Шаги (колонки → фильтр → join → агрегация
-                        {source?.type === 'mssql' ? ' / SQL' : ''})
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          onClick={() => removeSource(s.id)}
+                        >
+                          ×
+                        </button>
                       </div>
-                      {p.steps.map((st, idx) => (
-                        <div key={st.id} className="step-card">
-                          <div className="source-head">
-                            <strong>
-                              {idx + 1}.{' '}
-                              {st.type === 'select-columns'
-                                ? 'Колонки'
-                                : st.type === 'filter-rows'
-                                  ? 'Фильтр строк'
-                                  : st.type === 'join'
-                                    ? 'Join'
-                                    : st.type === 'aggregate'
-                                      ? 'Агрегация'
-                                      : 'SQL'}
-                            </strong>
-                            <button
-                              type="button"
-                              className="btn ghost"
-                              onClick={() => removeStep(p.id, st.id)}
-                            >
-                              ×
-                            </button>
-                          </div>
-
-                          {st.type === 'sql' && (
-                            <label>
-                              SQL-запрос
-                              <textarea
-                                rows={3}
-                                value={st.query}
-                                onChange={(e) =>
-                                  patchStep(p.id, st.id, { query: e.target.value })
-                                }
-                              />
-                            </label>
-                          )}
-
-                          {st.type === 'select-columns' && (
-                            <label>
-                              Колонки через запятую
-                              <input
-                                value={st.columns.join(', ')}
-                                placeholder="date, region, amount"
-                                onChange={(e) =>
-                                  patchStep(p.id, st.id, {
-                                    columns: e.target.value
-                                      .split(',')
-                                      .map((x) => x.trim())
-                                      .filter(Boolean),
-                                  })
-                                }
-                              />
-                            </label>
-                          )}
-
-                          {st.type === 'filter-rows' && (
-                            <>
-                              <label>
-                                Колонка
-                                <input
-                                  value={st.column}
-                                  onChange={(e) =>
-                                    patchStep(p.id, st.id, { column: e.target.value })
-                                  }
-                                />
-                              </label>
-                              <label>
-                                Условие
-                                <select
-                                  value={st.op}
-                                  onChange={(e) =>
-                                    patchStep(p.id, st.id, {
-                                      op: e.target.value as typeof st.op,
-                                    })
-                                  }
-                                >
-                                  <option value="eq">равно</option>
-                                  <option value="neq">не равно</option>
-                                  <option value="contains">содержит</option>
-                                  <option value="gt">больше</option>
-                                  <option value="lt">меньше</option>
-                                </select>
-                              </label>
-                              <label>
-                                Значение
-                                <input
-                                  value={st.value}
-                                  onChange={(e) =>
-                                    patchStep(p.id, st.id, { value: e.target.value })
-                                  }
-                                />
-                              </label>
-                            </>
-                          )}
-
-                          {st.type === 'join' && (
-                            <>
-                              <label>
-                                Правый источник
-                                <select
-                                  value={st.rightSourceId}
-                                  onChange={(e) =>
-                                    patchStep(p.id, st.id, {
-                                      rightSourceId: e.target.value,
-                                    })
-                                  }
-                                >
-                                  <option value="">—</option>
-                                  {sources
-                                    .filter((s) => s.id !== p.sourceId)
-                                    .map((s) => (
-                                      <option key={s.id} value={s.id}>
-                                        {s.name}
-                                      </option>
-                                    ))}
-                                </select>
-                              </label>
-                              <label>
-                                Ключ слева
-                                <input
-                                  value={st.leftKey}
-                                  onChange={(e) =>
-                                    patchStep(p.id, st.id, { leftKey: e.target.value })
-                                  }
-                                />
-                              </label>
-                              <label>
-                                Ключ справа
-                                <input
-                                  value={st.rightKey}
-                                  onChange={(e) =>
-                                    patchStep(p.id, st.id, { rightKey: e.target.value })
-                                  }
-                                />
-                              </label>
-                              <label>
-                                Тип
-                                <select
-                                  value={st.how}
-                                  onChange={(e) =>
-                                    patchStep(p.id, st.id, {
-                                      how: e.target.value as 'left' | 'inner',
-                                    })
-                                  }
-                                >
-                                  <option value="left">left</option>
-                                  <option value="inner">inner</option>
-                                </select>
-                              </label>
-                            </>
-                          )}
-
-                          {st.type === 'aggregate' && (
-                            <>
-                              <label>
-                                Группировка (колонки через запятую)
-                                <input
-                                  value={st.groupBy.join(', ')}
-                                  onChange={(e) =>
-                                    patchStep(p.id, st.id, {
-                                      groupBy: e.target.value
-                                        .split(',')
-                                        .map((x) => x.trim())
-                                        .filter(Boolean),
-                                    })
-                                  }
-                                />
-                              </label>
-                              <label>
-                                Метрика: колонка
-                                <input
-                                  value={st.metrics[0]?.column || ''}
-                                  onChange={(e) =>
-                                    patchStep(p.id, st.id, {
-                                      metrics: [
-                                        {
-                                          column: e.target.value,
-                                          fn: st.metrics[0]?.fn || 'sum',
-                                          as: st.metrics[0]?.as || 'sum_value',
-                                        },
-                                      ],
-                                    })
-                                  }
-                                />
-                              </label>
-                              <label>
-                                Функция
-                                <select
-                                  value={st.metrics[0]?.fn || 'sum'}
-                                  onChange={(e) =>
-                                    patchStep(p.id, st.id, {
-                                      metrics: [
-                                        {
-                                          column: st.metrics[0]?.column || '',
-                                          fn: e.target.value as
-                                            | 'sum'
-                                            | 'avg'
-                                            | 'count'
-                                            | 'min'
-                                            | 'max',
-                                          as:
-                                            st.metrics[0]?.as || `${e.target.value}_value`,
-                                        },
-                                      ],
-                                    })
-                                  }
-                                >
-                                  <option value="sum">sum</option>
-                                  <option value="avg">avg</option>
-                                  <option value="count">count</option>
-                                  <option value="min">min</option>
-                                  <option value="max">max</option>
-                                </select>
-                              </label>
-                              <label>
-                                Имя результата
-                                <input
-                                  value={st.metrics[0]?.as || ''}
-                                  onChange={(e) =>
-                                    patchStep(p.id, st.id, {
-                                      metrics: [
-                                        {
-                                          column: st.metrics[0]?.column || '',
-                                          fn: st.metrics[0]?.fn || 'sum',
-                                          as: e.target.value,
-                                        },
-                                      ],
-                                    })
-                                  }
-                                />
-                              </label>
-                            </>
-                          )}
-                        </div>
-                      ))}
-
-                      <div className="row-actions" style={{ flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          className="btn ghost"
-                          onClick={() => addStep(p.id, 'select-columns')}
-                        >
-                          + Колонки
-                        </button>
-                        <button
-                          type="button"
-                          className="btn ghost"
-                          onClick={() => addStep(p.id, 'filter-rows')}
-                        >
-                          + Фильтр
-                        </button>
-                        <button
-                          type="button"
-                          className="btn ghost"
-                          onClick={() => addStep(p.id, 'join')}
-                        >
-                          + Join
-                        </button>
-                        <button
-                          type="button"
-                          className="btn ghost"
-                          onClick={() => addStep(p.id, 'aggregate')}
-                        >
-                          + Агрегация
-                        </button>
-                        {source?.type === 'mssql' && (
-                          <button
-                            type="button"
-                            className="btn ghost"
-                            onClick={() => addStep(p.id, 'sql')}
-                          >
-                            + SQL
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </li>
-                );
-              })}
-              {!pipelines.length && (
-                <li className="muted">Добавьте источник — конвейер создастся сам</li>
-              )}
-            </ul>
-
-            <h3>Снимок данных</h3>
-            <ul className="source-list">
-              {datasets.map((d) => {
-                const bytes = JSON.stringify(d).length;
-                return (
-                  <li key={d.id}>
-                    <strong>{d.name}</strong>
-                    <div className="muted">
-                      {d.rows.length} строк · {d.columns.length} колонок · ~
-                      {Math.round(bytes / 1024)} КБ
-                      {d.updatedAt
-                        ? ` · ${new Date(d.updatedAt).toLocaleString('ru-RU')}`
-                        : ''}
-                    </div>
-                    {bytes > 2_000_000 && (
-                      <div className="warn">Большой снимок — HTML будет тяжёлым</div>
                     )}
                   </li>
-                );
-              })}
-              {!datasets.length && (
-                <li className="muted">Нажмите «Обновить данные»</li>
-              )}
-            </ul>
-          </section>
-
-          <section className="etl-section">
-            <h3>Роли полей</h3>
-            <p className="hint">
-              После «Обновить данные» роли предлагаются автоматически. Можно переопределить.
-            </p>
-            <label>
-              Датасет
-              <select
-                value={ds?.id || ''}
-                onChange={(e) => setDatasetId(e.target.value)}
-              >
-                {!datasets.length && <option value="">—</option>}
-                {datasets.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
                 ))}
-              </select>
-            </label>
-            {ds && (
-              <>
-                <div className="row-actions" style={{ marginBottom: 8 }}>
-                  <button type="button" className="btn ghost" onClick={resuggest}>
-                    Предложить снова
+                {!sources.length && <li className="etl-empty">Загрузите CSV / XLSX / SQL</li>}
+              </ul>
+
+              <div className="etl-delim-row">
+                Для новых файлов
+                <select
+                  value={csvDelim}
+                  onChange={(e) => setCsvDelim(e.target.value as CsvDelimiter)}
+                >
+                  {DELIM_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="etl-side-actions">
+                <button type="button" className="btn" onClick={() => csvRef.current?.click()}>
+                  + CSV
+                </button>
+                <button type="button" className="btn" onClick={() => xlsxRef.current?.click()}>
+                  + XLSX
+                </button>
+                <button type="button" className="btn" onClick={() => setShowSql((v) => !v)}>
+                  + SQL
+                </button>
+                <button
+                  type="button"
+                  className="btn ghost"
+                  title="Демо: semicolon RU CSV"
+                  onClick={() => void loadSemicolonDemo()}
+                >
+                  Демо ;
+                </button>
+                <input
+                  ref={csvRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  hidden
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (f) await uploadCsv(f);
+                    e.target.value = '';
+                  }}
+                />
+                <input
+                  ref={xlsxRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  hidden
+                  onChange={async (e) => {
+                    const f = e.target.files?.[0];
+                    if (f) await uploadXlsx(f);
+                    e.target.value = '';
+                  }}
+                />
+              </div>
+
+              {showSql && (
+                <div className="etl-mssql-form">
+                  {(
+                    [
+                      ['name', 'Имя'],
+                      ['server', 'Сервер'],
+                      ['database', 'БД'],
+                      ['user', 'Логин'],
+                      ['password', 'Пароль'],
+                    ] as const
+                  ).map(([k, lab]) => (
+                    <label key={k}>
+                      {lab}
+                      <input
+                        type={k === 'password' ? 'password' : 'text'}
+                        value={sqlForm[k]}
+                        onChange={(e) => setSqlForm((f) => ({ ...f, [k]: e.target.value }))}
+                      />
+                    </label>
+                  ))}
+                  <label>
+                    Порт
+                    <input
+                      type="number"
+                      value={sqlForm.port}
+                      onChange={(e) =>
+                        setSqlForm((f) => ({ ...f, port: Number(e.target.value) || 1433 }))
+                      }
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn primary"
+                    onClick={() => {
+                      const payload: Omit<SourceMssql, 'id' | 'type'> = {
+                        ...sqlForm,
+                        trustServerCertificate: true,
+                      };
+                      addMssqlSource(payload);
+                      setShowSql(false);
+                    }}
+                  >
+                    Добавить SQL
                   </button>
-                  <span className="muted">
-                    {ds.rows.length} строк · {ds.columns.length} колонок
-                  </span>
                 </div>
-                <table className="etl-roles-table">
+              )}
+            </aside>
+
+            <div className="etl-wiz-main">
+              <div className="etl-wiz-main-scroll">
+                {!ds ? (
+                  <p className="etl-empty">
+                    Загрузите источник с разделителем «;» для RU/Excel CSV, затем данные появятся
+                    здесь.
+                  </p>
+                ) : (
+                  <table className="etl-table">
+                    <thead>
+                      <tr>
+                        <th>Поле</th>
+                        <th>Примеры</th>
+                        <th>Тип данных</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ds.columns.map((col) => {
+                        const samples = columnSamples(ds, col);
+                        const cfg = schema[col];
+                        return (
+                          <tr key={col}>
+                            <td>
+                              <strong>{col}</strong>
+                            </td>
+                            <td>
+                              <div className="etl-chips">
+                                {samples.map((s) => (
+                                  <span key={s} className="etl-chip" title={s}>
+                                    {s}
+                                  </span>
+                                ))}
+                                {!samples.length && <span className="etl-chip">—</span>}
+                              </div>
+                            </td>
+                            <td>
+                              <select
+                                value={cfg?.dataType || 'String'}
+                                onChange={(e) =>
+                                  setSchema((prev) =>
+                                    patchSchemaField(prev, col, {
+                                      dataType: e.target.value as FieldDataType,
+                                    }),
+                                  )
+                                }
+                              >
+                                {DATA_TYPE_OPTIONS.map((t) => (
+                                  <option key={t} value={t}>
+                                    {t}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+              <div className="etl-wiz-foot">
+                <span className="etl-empty" style={{ padding: 0 }}>
+                  {ds
+                    ? `${ds.rows.length} строк · ${ds.columns.length} колонок`
+                    : 'Нет датасета'}
+                </span>
+                <button
+                  type="button"
+                  className="btn primary"
+                  disabled={!ds}
+                  onClick={() => setStep(2)}
+                >
+                  Далее: Настройка схемы
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="etl-tabs">
+              {(
+                [
+                  ['dims', 'Измерения и Фильтры'],
+                  ['measures', 'Меры и Вычисления'],
+                  ['toggles', 'Переключатели'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`etl-tab${tab === id ? ' active' : ''}`}
+                  onClick={() => setTab(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="etl-wiz-main-scroll">
+              {tab === 'dims' && ds && (
+                <table className="etl-table">
                   <thead>
                     <tr>
                       <th>Поле</th>
                       <th>Роль</th>
+                      <th>Виджет / Фильтр</th>
+                      <th>Формат</th>
+                      <th>Превью</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {ds.columns.map((c) => (
-                      <tr key={c}>
-                        <td>{c}</td>
-                        <td>
-                          <select
-                            value={ds.fieldRoles?.[c] || 'dimension'}
-                            onChange={(e) => setRole(c, e.target.value as FieldRole)}
-                          >
-                            {(Object.keys(ROLE_LABELS) as FieldRole[]).map((r) => (
-                              <option key={r} value={r}>
-                                {ROLE_LABELS[r]}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    ))}
+                    {ds.columns.map((col) => {
+                      const cfg = schema[col] || {
+                        role: 'dimension' as FieldRole,
+                        widget: 'none' as FilterWidgetKind,
+                        format: 'auto' as FieldFormatKind,
+                        dataType: 'String' as FieldDataType,
+                      };
+                      return (
+                        <tr key={col}>
+                          <td>
+                            <strong>{col}</strong>
+                          </td>
+                          <td>
+                            <select
+                              value={cfg.role}
+                              onChange={(e) =>
+                                setSchema((prev) =>
+                                  patchSchemaField(prev, col, {
+                                    role: e.target.value as FieldRole,
+                                  }),
+                                )
+                              }
+                            >
+                              {(Object.keys(ROLE_LABELS) as FieldRole[]).map((r) => (
+                                <option key={r} value={r}>
+                                  {ROLE_LABELS[r]}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={cfg.widget}
+                              disabled={cfg.role === 'measure' || cfg.role === 'ignore'}
+                              onChange={(e) =>
+                                setSchema((prev) =>
+                                  patchSchemaField(prev, col, {
+                                    widget: e.target.value as FilterWidgetKind,
+                                  }),
+                                )
+                              }
+                            >
+                              {FILTER_WIDGET_OPTIONS.map((o) => (
+                                <option key={o.id} value={o.id}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <select
+                              value={cfg.format}
+                              onChange={(e) =>
+                                setSchema((prev) =>
+                                  patchSchemaField(prev, col, {
+                                    format: e.target.value as FieldFormatKind,
+                                  }),
+                                )
+                              }
+                            >
+                              {FIELD_FORMAT_OPTIONS.map((o) => (
+                                <option key={o.id} value={o.id}>
+                                  {o.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <FieldPreview dataset={ds} column={col} widget={cfg.widget} />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
-              </>
-            )}
-            {!ds && <p className="warn">Сначала загрузите данные и нажмите «Обновить данные».</p>}
-          </section>
+              )}
 
-          <section className="etl-section">
-            <h3>Вычисляемые поля</h3>
-            <p className="hint">
-              Прирост / вклад (как в standalone), ISO-неделя, отношение, год/месяц. Считаются при
-              обновлении и доступны как меры/измерения.
-            </p>
-            {ds && (
-              <>
-                <label>
-                  Имя поля
-                  <input
-                    value={calcDraft.name}
-                    onChange={(e) => setCalcDraft((d) => ({ ...d, name: e.target.value }))}
-                    placeholder={
-                      calcDraft.kind === 'growth'
-                        ? 'prirost_pct'
-                        : calcDraft.kind === 'growth_contrib'
-                          ? 'vklad_pct'
-                          : calcDraft.kind === 'iso_week'
-                            ? 'iso_week'
-                            : 'calc_field'
-                    }
-                  />
-                </label>
-                <label>
-                  Тип
-                  <select
-                    value={calcDraft.kind}
-                    onChange={(e) =>
-                      setCalcDraft((d) => ({
-                        ...d,
-                        kind: e.target.value as CalculatedField['kind'],
-                        withYear:
-                          e.target.value === 'iso_week' ? d.withYear : false,
-                      }))
-                    }
-                  >
-                    {CALC_KIND_ORDER.map((k) => (
-                      <option key={k} value={k}>
-                        {CALC_KIND_LABELS[k]}
-                      </option>
+              {tab === 'measures' && ds && (
+                <div className="etl-measures-layout">
+                  <aside className="etl-var-pool">
+                    <h4>Измерения</h4>
+                    {dimFields.map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        className="etl-var-chip dim"
+                        draggable
+                        onDragStart={(e) => e.dataTransfer.setData('text/etl-field', f)}
+                      >
+                        {f}
+                      </button>
                     ))}
-                  </select>
-                </label>
-                {calcDraft.kind === 'growth' && (
-                  <p className="hint">Формула: (X_отчёт − X_база) / X_база × 100</p>
-                )}
-                {calcDraft.kind === 'growth_contrib' && (
-                  <p className="hint">
-                    Формула: (X_отчёт − X_база) / Σ(X_база) × 100 — вклад строки в общий прирост
+                    <h4 style={{ marginTop: 12 }}>Меры</h4>
+                    {measureFields.map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        className="etl-var-chip meas"
+                        draggable
+                        onDragStart={(e) => e.dataTransfer.setData('text/etl-field', f)}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                    {!dimFields.length && !measureFields.length && (
+                      <p className="etl-empty">Задайте роли на вкладке «Измерения»</p>
+                    )}
+                  </aside>
+
+                  <div>
+                    <div className="etl-templates">
+                      {MEASURE_TEMPLATES.map((kind) => (
+                        <button
+                          key={kind}
+                          type="button"
+                          className="etl-template-btn"
+                          onClick={() => addCalcTemplate(kind)}
+                        >
+                          <strong>{CALC_KIND_LABELS[kind]}</strong>
+                          <span>{CALC_KIND_FORMULA[kind] || ''}</span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {calcs.map((calc) => (
+                      <div key={calc.id} className="etl-formula-card">
+                        <header>
+                          <input
+                            value={calc.name}
+                            onChange={(e) => patchCalc(calc.id, { name: e.target.value })}
+                            placeholder="Имя поля"
+                          />
+                          <strong style={{ fontSize: 12, color: 'var(--etl-muted)' }}>
+                            {CALC_KIND_LABELS[calc.kind]}
+                          </strong>
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            onClick={() => removeCalc(calc.id)}
+                          >
+                            ×
+                          </button>
+                        </header>
+
+                        {(calc.kind === 'growth' ||
+                          calc.kind === 'growth_contrib' ||
+                          calc.kind === 'delta' ||
+                          calc.kind === 'ratio' ||
+                          calc.kind === 'pct') && (
+                          <div className="etl-slots">
+                            <DropSlot
+                              label="A"
+                              value={calc.a}
+                              onDropField={(f) => patchCalc(calc.id, { a: f })}
+                            />
+                            <span>
+                              {calc.kind === 'delta'
+                                ? '−'
+                                : calc.kind === 'ratio' || calc.kind === 'pct'
+                                  ? '÷'
+                                  : 'vs'}
+                            </span>
+                            <DropSlot
+                              label="B"
+                              value={calc.b}
+                              onDropField={(f) => patchCalc(calc.id, { b: f })}
+                            />
+                            <span style={{ color: 'var(--etl-muted)', fontSize: 12 }}>
+                              {CALC_KIND_FORMULA[calc.kind]}
+                            </span>
+                          </div>
+                        )}
+
+                        {(calc.kind === 'sum' ||
+                          calc.kind === 'avg' ||
+                          calc.kind === 'count' ||
+                          calc.kind === 'count_distinct' ||
+                          calc.kind === 'share') && (
+                          <div className="etl-slots">
+                            <span>{CALC_KIND_LABELS[calc.kind]}(</span>
+                            <DropSlot
+                              label="поле"
+                              value={calc.a}
+                              onDropField={(f) => patchCalc(calc.id, { a: f })}
+                            />
+                            <span>)</span>
+                          </div>
+                        )}
+
+                        {calc.kind === 'if' && (
+                          <div>
+                            <div className="etl-slots">
+                              <span>IF</span>
+                              <DropSlot
+                                label="поле"
+                                value={calc.a}
+                                onDropField={(f) => patchCalc(calc.id, { a: f })}
+                              />
+                              <select
+                                value={calc.op || 'between'}
+                                onChange={(e) =>
+                                  patchCalc(calc.id, { op: e.target.value as CalcCompareOp })
+                                }
+                              >
+                                <option value="between">between</option>
+                                <option value="eq">=</option>
+                                <option value="neq">≠</option>
+                                <option value="gt">&gt;</option>
+                                <option value="lt">&lt;</option>
+                                <option value="gte">≥</option>
+                                <option value="lte">≤</option>
+                                <option value="contains">contains</option>
+                              </select>
+                              {calc.op === 'between' ? (
+                                <>
+                                  <input
+                                    type="number"
+                                    value={calc.value ?? 0}
+                                    onChange={(e) =>
+                                      patchCalc(calc.id, { value: Number(e.target.value) })
+                                    }
+                                    style={{ width: 72 }}
+                                  />
+                                  <span>и</span>
+                                  <input
+                                    type="number"
+                                    value={calc.value2 ?? 0}
+                                    onChange={(e) =>
+                                      patchCalc(calc.id, { value2: Number(e.target.value) })
+                                    }
+                                    style={{ width: 72 }}
+                                  />
+                                </>
+                              ) : (
+                                <input
+                                  value={calc.b ?? ''}
+                                  placeholder="значение / поле"
+                                  onChange={(e) => patchCalc(calc.id, { b: e.target.value })}
+                                  style={{ width: 120 }}
+                                />
+                              )}
+                            </div>
+                            <div className="etl-case-row">
+                              <span>then</span>
+                              <input
+                                value={String(calc.thenValue ?? '')}
+                                onChange={(e) => patchCalc(calc.id, { thenValue: e.target.value })}
+                              />
+                              <span>else</span>
+                              <input
+                                value={String(calc.elseValue ?? '')}
+                                onChange={(e) => patchCalc(calc.id, { elseValue: e.target.value })}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {calc.kind === 'switch' && (
+                          <div>
+                            <div className="etl-slots">
+                              <span>SWITCH</span>
+                              <DropSlot
+                                label="поле"
+                                value={calc.a}
+                                onDropField={(f) => patchCalc(calc.id, { a: f })}
+                              />
+                            </div>
+                            {(calc.cases || []).map((c) => (
+                              <div key={c.id} className="etl-case-row">
+                                <input
+                                  placeholder="когда"
+                                  value={c.match}
+                                  onChange={(e) =>
+                                    patchCalc(calc.id, {
+                                      cases: (calc.cases || []).map((x) =>
+                                        x.id === c.id ? { ...x, match: e.target.value } : x,
+                                      ),
+                                    })
+                                  }
+                                />
+                                <span>→</span>
+                                <input
+                                  placeholder="результат"
+                                  value={String(c.result)}
+                                  onChange={(e) =>
+                                    patchCalc(calc.id, {
+                                      cases: (calc.cases || []).map((x) =>
+                                        x.id === c.id ? { ...x, result: e.target.value } : x,
+                                      ),
+                                    })
+                                  }
+                                />
+                                <button
+                                  type="button"
+                                  className="btn ghost"
+                                  onClick={() =>
+                                    patchCalc(calc.id, {
+                                      cases: (calc.cases || []).filter((x) => x.id !== c.id),
+                                    })
+                                  }
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                            <div className="etl-case-row">
+                              <button
+                                type="button"
+                                className="btn"
+                                onClick={() =>
+                                  patchCalc(calc.id, {
+                                    cases: [
+                                      ...(calc.cases || []),
+                                      { id: uid('case'), match: '', result: '' },
+                                    ],
+                                  })
+                                }
+                              >
+                                + case
+                              </button>
+                              <span>default</span>
+                              <input
+                                value={String(calc.defaultValue ?? '')}
+                                onChange={(e) =>
+                                  patchCalc(calc.id, { defaultValue: e.target.value })
+                                }
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {!calcs.length && (
+                      <p className="etl-empty">Выберите шаблон формулы или перетащите поля в слоты</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {tab === 'toggles' && (
+                <div className="etl-toggle-groups">
+                  <p className="etl-empty" style={{ textAlign: 'left', padding: '0 0 8px' }}>
+                    Именованные группы: метка кнопки → поле меры (например «Без НДС» / «С НДС»).
                   </p>
-                )}
-                {calcDraft.kind !== 'const' && (
-                  <FieldSelect
-                    label={fieldALabel}
-                    dataset={ds}
-                    value={calcDraft.a || ''}
-                    onChange={(a) => setCalcDraft((d) => ({ ...d, a }))}
-                    roles={isDateKind ? 'date' : 'measure'}
-                  />
-                )}
-                {needsBase && (
-                  <FieldSelect
-                    label={fieldBLabel}
-                    dataset={ds}
-                    value={calcDraft.b || ''}
-                    onChange={(b) => setCalcDraft((d) => ({ ...d, b }))}
-                    roles="measure"
-                  />
-                )}
-                {calcDraft.kind === 'iso_week' && (
-                  <label className="field-inline">
-                    <input
-                      type="checkbox"
-                      checked={!!calcDraft.withYear}
-                      onChange={(e) =>
-                        setCalcDraft((d) => ({ ...d, withYear: e.target.checked }))
-                      }
-                    />
-                    С ISO-годом (формат YYYY.WW, как в standalone)
-                  </label>
-                )}
-                {calcDraft.kind === 'const' && (
-                  <label>
-                    Значение
-                    <input
-                      type="number"
-                      value={calcDraft.value ?? 0}
-                      onChange={(e) =>
-                        setCalcDraft((d) => ({ ...d, value: Number(e.target.value) }))
-                      }
-                    />
-                  </label>
-                )}
-                <button type="button" className="btn primary" onClick={addCalc}>
-                  Добавить поле
-                </button>
-                <ul className="source-list" style={{ marginTop: 12 }}>
-                  {(ds.calculatedFields || []).map((c) => (
-                    <li key={c.id}>
-                      <div className="source-head">
-                        <strong>
-                          {c.name}{' '}
-                          <span className="muted">
-                            ({CALC_KIND_LABELS[c.kind]}
-                            {c.kind === 'iso_week' && c.withYear ? ', YYYY.WW' : ''}
-                            {c.kind === 'growth' || c.kind === 'growth_contrib'
-                              ? `: ${c.a || '?'} vs ${c.b || '?'}`
-                              : ''}
+                  <button type="button" className="btn" onClick={addToggleGroup}>
+                    + Группа переключателей
+                  </button>
+                  {toggles.map((g) => (
+                    <div key={g.id} className="etl-toggle-card">
+                      <div className="etl-case-row">
+                        <input
+                          value={g.name}
+                          onChange={(e) =>
+                            setToggles((list) =>
+                              list.map((x) =>
+                                x.id === g.id ? { ...x, name: e.target.value } : x,
+                              ),
                             )
-                          </span>
-                        </strong>
-                        <button type="button" className="btn ghost" onClick={() => removeCalc(c.id)}>
-                          ×
+                          }
+                          placeholder="Имя группы"
+                        />
+                        <button
+                          type="button"
+                          className="btn ghost"
+                          onClick={() => setToggles((list) => list.filter((x) => x.id !== g.id))}
+                        >
+                          Удалить группу
                         </button>
                       </div>
-                    </li>
+                      <div className="etl-toggle-opts">
+                        {g.options.map((opt) => (
+                          <div key={opt.id} className="etl-toggle-opt-row">
+                            <input
+                              value={opt.label}
+                              placeholder="Метка кнопки"
+                              onChange={(e) =>
+                                setToggles((list) =>
+                                  list.map((x) =>
+                                    x.id !== g.id
+                                      ? x
+                                      : {
+                                          ...x,
+                                          options: x.options.map((o) =>
+                                            o.id === opt.id
+                                              ? { ...o, label: e.target.value }
+                                              : o,
+                                          ),
+                                        },
+                                  ),
+                                )
+                              }
+                            />
+                            <select
+                              value={opt.field}
+                              onChange={(e) =>
+                                setToggles((list) =>
+                                  list.map((x) =>
+                                    x.id !== g.id
+                                      ? x
+                                      : {
+                                          ...x,
+                                          options: x.options.map((o) =>
+                                            o.id === opt.id
+                                              ? { ...o, field: e.target.value }
+                                              : o,
+                                          ),
+                                        },
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="">— мера —</option>
+                              {(measureFields.length ? measureFields : ds?.columns || []).map(
+                                (c) => (
+                                  <option key={c} value={c}>
+                                    {c}
+                                  </option>
+                                ),
+                              )}
+                            </select>
+                            <button
+                              type="button"
+                              className="btn ghost"
+                              onClick={() =>
+                                setToggles((list) =>
+                                  list.map((x) =>
+                                    x.id !== g.id
+                                      ? x
+                                      : {
+                                          ...x,
+                                          options: x.options.filter((o) => o.id !== opt.id),
+                                        },
+                                  ),
+                                )
+                              }
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() =>
+                            setToggles((list) =>
+                              list.map((x) =>
+                                x.id !== g.id
+                                  ? x
+                                  : {
+                                      ...x,
+                                      options: [
+                                        ...x.options,
+                                        {
+                                          id: uid('opt'),
+                                          label: 'Новая',
+                                          field: measureFields[0] || '',
+                                        },
+                                      ],
+                                    },
+                              ),
+                            )
+                          }
+                        >
+                          + вариант
+                        </button>
+                      </div>
+                    </div>
                   ))}
-                  {!(ds.calculatedFields || []).length && (
-                    <li className="muted">Пока нет вычисляемых полей</li>
-                  )}
-                </ul>
-              </>
-            )}
-          </section>
-        </div>
+                </div>
+              )}
+
+              {!ds && <p className="etl-empty">Нет датасета — вернитесь к шагу 1</p>}
+            </div>
+
+            <div className="etl-wiz-foot">
+              <button type="button" className="btn" onClick={() => setStep(1)}>
+                Назад
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                disabled={!ds}
+                onClick={finishSetup}
+              >
+                Завершить настройку
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

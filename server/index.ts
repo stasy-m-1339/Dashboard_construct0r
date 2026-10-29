@@ -87,6 +87,13 @@ app.get('/api/sample-csv', (_req, res) => {
   res.type('text/csv').send(content);
 });
 
+/** Semicolon RU/Excel sample for ETL wizard demo. */
+app.get('/api/sample-semicolon-csv', (_req, res) => {
+  const samplePath = path.join(root, 'samples', 'pfp44.csv');
+  const content = fs.readFileSync(samplePath, 'utf8');
+  res.type('text/csv').send(content);
+});
+
 app.post('/api/parse-csv', upload.single('file'), (req, res) => {
   try {
     const text =
