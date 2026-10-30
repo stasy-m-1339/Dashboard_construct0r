@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ETL Конструктор — Flat Design</title>
+<style>
+  :root {
+    --grey-50: #F8F6F5;
+    --grey-100: #F3F1F0;
+    --grey-200: #ECE9E8;
+    --grey-300: #DFDBDA;
+    --teal-50: #DCE1DF;
+    --teal-100: #BCCBC8;
+    --teal-700: #3F827B;
+    --primary: #02665E;
+    --sand-500: #bbac9b;
+    --wine-700: #8E4B4F;
+    --bg: var(--grey-100);
+    --bg-card: #FFFFFF;
+    --text: #2D2A2A;
+    --text-secondary: #685E5F;
+    --border: #DFDBDA;
+    --focus-ring: rgba(2,102,94,.35);
+    --dim: var(--teal-700);
+    --meas: var(--wine-700);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: grid;
+    place-items: center;
+    background:
+      radial-gradient(900px 420px at 8% -8%, rgba(2,102,94,.07), transparent 55%),
+      var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Source Sans 3", system-ui, sans-serif;
+  }
+  .etl-modal-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(45,42,42,.38);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .etl-modal {
+    width: min(1360px, 96vw);
+    height: min(92vh, 900px);
+    display: flex; flex-direction: column;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(45,42,42,.18);
+    overflow: hidden;
+  }
+  .etl-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; padding: 14px 18px;
+    background: var(--bg-card); border-bottom: 1px solid var(--border);
+  }
+  .etl-header-left { display: flex; align-items: center; gap: 12px; }
+  .etl-title { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
+  .step-indicator {
+    font-size: 12px; color: var(--text-secondary);
+    background: var(--grey-200); border-radius: 999px; padding: 4px 10px;
+  }
+  .etl-header-actions { display: flex; gap: 8px; align-items: center; }
+  .etl-close {
+    width: 36px; height: 36px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--bg-card);
+    cursor: pointer; font-size: 18px; color: var(--text-secondary);
+  }
+  .etl-close:hover { background: var(--teal-50); }
+  .btn {
+    border: 1px solid var(--border); background: var(--bg-card); color: var(--text);
+    border-radius: 10px; padding: 8px 12px; font-size: 13px; cursor: pointer;
+  }
+  .btn:hover { background: var(--teal-50); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.primary { background: var(--primary); color: #fff; border-color: transparent; font-weight: 650; }
+  .btn.primary:hover { background: #00665e; }
+  .btn.ghost { background: transparent; }
+  .etl-body { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+  .etl-sidebar {
+    width: 248px; flex-shrink: 0; background: var(--bg-card);
+    border-right: 1px solid var(--border); padding: 14px;
+    display: flex; flex-direction: column; gap: 10px; overflow: auto;
+  }
+  .sidebar-title {
+    margin: 0; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--text-secondary); font-weight: 600;
+  }
+  .file-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .file-item {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 10px 12px; border-radius: 10px; border: 1px solid transparent;
+    background: var(--bg); cursor: pointer; text-align: left; font: inherit; color: inherit;
+  }
+  .file-item.active { border-color: var(--primary); background: var(--teal-50); }
+  .file-name { font-size: 13px; font-weight: 650; }
+  .file-meta { font-size: 11px; color: var(--text-secondary); }
+  .source-actions { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+  .btn-source { width: 100%; text-align: center; }
+  .btn-source.is-disabled { opacity: .55; cursor: not-allowed; }
+  .hint-xlsx { font-size: 11px; color: var(--text-secondary); text-align: center; margin: -2px 0 4px; }
+  .delim-row {
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .delim-row select, .schema-table select, .schema-table input,
+  .calc-block input, .calc-block select, .toggle-group input, .toggle-group select {
+    font: inherit; font-size: 13px; color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; background: #fff;
+  }
+  .etl-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .etl-main-scroll { flex: 1; overflow: auto; padding: 16px 18px; }
+  .etl-footer {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 18px; background: var(--bg-card); border-top: 1px solid var(--border);
+  }
+  .etl-footer-meta { font-size: 12px; color: var(--text-secondary); }
+  .schema-table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+    background: var(--bg-card); border-radius: 12px; overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  .schema-table th, .schema-table td {
+    text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle;
+  }
+  .schema-table th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--text-secondary); background: var(--grey-50); font-weight: 600;
+  }
+  .schema-table tr:last-child td { border-bottom: 0; }
+  .sample-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chip {
+    display: inline-block; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    background: var(--grey-200); border-radius: 999px; padding: 2px 8px;
+    font-size: 11px; color: var(--text-secondary);
+  }
+  .etl-tabs {
+    display: flex; gap: 4px; padding: 0 18px;
+    background: var(--bg-card); border-bottom: 1px solid var(--border);
+  }
+  .etl-tab {
+    border: 0; background: transparent; padding: 12px 14px; font-size: 13px; font-weight: 600;
+    color: var(--text-secondary); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px;
+  }
+  .etl-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
+  .preview-box { display: flex; flex-direction: column; gap: 6px; min-width: 180px; max-width: 260px; }
+  .preview-multi { display: flex; flex-direction: column; gap: 6px; }
+  .multi-toolbar { display: flex; gap: 6px; }
+  .multi-search { flex: 1; width: 100%; }
+  .multi-reset {
+    border: 1px solid var(--border); background: #fff; border-radius: 8px;
+    padding: 0 8px; font-size: 12px; cursor: pointer; color: var(--text-secondary);
+  }
+  .multi-list {
+    max-height: 120px; overflow: auto; border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px; background: #fff; display: flex; flex-direction: column; gap: 2px;
+  }
+  .multi-opt {
+    display: flex; align-items: center; gap: 6px; font-size: 12px;
+    padding: 3px 4px; border-radius: 6px; cursor: pointer;
+  }
+  .multi-opt:hover, .multi-opt.on { background: var(--teal-50); }
+  .stepper-row { display: flex; align-items: center; gap: 6px; }
+  .stepper-row button {
+    width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border);
+    background: #fff; cursor: pointer;
+  }
+  .stepper-val { flex: 1; text-align: center; font-size: 12px; font-weight: 600; }
+  .preview-toggle {
+    display: inline-flex; border: 1px solid var(--border); border-radius: 999px; overflow: hidden;
+  }
+  .preview-toggle button { border: 0; background: #fff; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  .preview-toggle button.on { background: var(--primary); color: #fff; }
+  .preview-slider { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--text-secondary); }
+  .measures-layout {
+    display: grid; grid-template-columns: 200px minmax(0,1fr); gap: 14px; min-height: 420px;
+  }
+  .var-pool {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 10px; overflow: auto;
+  }
+  .var-section { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-secondary); }
+  .var-chip {
+    display: block; width: 100%; text-align: left; margin-bottom: 6px;
+    border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px;
+    font-size: 12px; cursor: grab; background: #fff; color: inherit;
+  }
+  .var-chip.dim { border-left: 3px solid var(--dim); }
+  .var-chip.meas { border-left: 3px solid var(--meas); }
+  .formula-templates { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .formula-tpl {
+    border: 1px dashed var(--border); background: var(--bg-card); border-radius: 10px;
+    padding: 8px 10px; font-size: 12px; cursor: pointer; text-align: left; color: inherit;
+  }
+  .formula-tpl strong { display: block; font-size: 12px; }
+  .formula-tpl span { color: var(--text-secondary); font-size: 11px; }
+  .calc-block {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px; margin-bottom: 10px;
+  }
+  .calc-block-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .calc-slots { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0; font-size: 13px; }
+  .calc-slot {
+    min-width: 100px; min-height: 36px; border: 2px dashed var(--border); border-radius: 10px;
+    padding: 6px 10px; background: var(--grey-50); display: flex; align-items: center; justify-content: center;
+    font-size: 12px; color: var(--text-secondary);
+  }
+  .calc-slot.filled { border-style: solid; border-color: var(--primary); background: var(--teal-50); color: var(--text); font-weight: 600; }
+  .calc-slot.drag-over { border-color: var(--sand-500); background: #ede7df; }
+  .case-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 6px; }
+  .toggle-groups { display: flex; flex-direction: column; gap: 12px; }
+  .toggle-group {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 12px;
+  }
+  .toggle-state-row {
+    display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: center; margin-top: 8px;
+  }
+  .empty-hint { color: var(--text-secondary); font-size: 13px; padding: 24px; text-align: center; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="etl-modal-backdrop">
+  <div class="etl-modal" id="etlModal">
+    <header class="etl-header">
+      <div class="etl-header-left">
+        <h1 class="etl-title">ETL Конструктор</h1>
+        <span class="step-indicator" id="stepIndicator">Шаг 1 из 2: Типы данных</span>
+      </div>
+      <div class="etl-header-actions">
+        <button type="button" class="btn" id="btnRefresh">Обновить данные</button>
+        <button type="button" class="etl-close" title="Закрыть" aria-label="Закрыть">×</button>
+      </div>
+    </header>
+
+    <!-- STEP 1 -->
+    <div class="etl-body" id="step1">
+      <aside class="etl-sidebar">
+        <h2 class="sidebar-title">Источники</h2>
+        <ul class="file-list">
+          <li><button type="button" class="file-item active"><span class="file-name">CSV: пфп44</span><span class="file-meta">pfp44.csv · ;</span></button></li>
+          <li><button type="button" class="file-item"><span class="file-name">SQL: MSSQL</span><span class="file-meta">server / db</span></button></li>
+        </ul>
+        <div class="delim-row">Разделитель
+          <select><option>;</option><option>,</option><option>Tab</option><option>Авто</option></select>
+        </div>
+        <div class="source-actions">
+          <button type="button" class="btn btn-source">+ CSV</button>
+          <button type="button" class="btn btn-source is-disabled" disabled title="Excel пока не поддерживается">+ XLSX</button>
+          <div class="hint-xlsx">пока только CSV</div>
+          <button type="button" class="btn btn-source">+ SQL</button>
+        </div>
+      </aside>
+      <div class="etl-main">
+        <div class="etl-main-scroll">
+          <table class="schema-table">
+            <thead><tr><th>Поле</th><th>Примеры</th><th>Тип данных</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>Показатель</strong></td>
+                <td><div class="sample-chips"><span class="chip">Выручка</span><span class="chip">Маржа</span></div></td>
+                <td><select class="type-select"><option>String</option><option>Integer</option><option>Float</option><option>Boolean</option><option>Date</option><option>DateTime</option></select></td>
+              </tr>
+              <tr>
+                <td><strong>Месяц</strong></td>
+                <td><div class="sample-chips"><span class="chip">2024-01-08</span><span class="chip">2024-01-15</span></div></td>
+                <td><select class="type-select"><option>Date</option><option>String</option></select></td>
+              </tr>
+              <tr>
+                <td><strong>Регион</strong></td>
+                <td><div class="sample-chips"><span class="chip">Север</span><span class="chip">Юг</span><span class="chip">Запад</span></div></td>
+                <td><select class="type-select"><option>String</option></select></td>
+              </tr>
+              <tr>
+                <td><strong>Сумма_без_НДС</strong></td>
+                <td><div class="sample-chips"><span class="chip">1200,5</span><span class="chip">980,2</span></div></td>
+                <td><select class="type-select"><option>Float</option><option>Integer</option></select></td>
+              </tr>
+              <tr>
+                <td><strong>Сумма_с_НДС</strong></td>
+                <td><div class="sample-chips"><span class="chip">1440,6</span><span class="chip">1176,24</span></div></td>
+                <td><select class="type-select"><option>Float</option></select></td>
+              </tr>
+              <tr>
+                <td><strong>План</strong></td>
+                <td><div class="sample-chips"><span class="chip">1100</span><span class="chip">1000</span></div></td>
+                <td><select class="type-select"><option>Integer</option><option>Float</option></select></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <footer class="etl-footer">
+          <span class="etl-footer-meta">6 строк · 6 колонок</span>
+          <button type="button" class="btn primary" id="btnNext">Далее: Настройка схемы</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- STEP 2 -->
+    <div id="step2" class="hidden" style="flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;">
+      <nav class="etl-tabs">
+        <button type="button" class="etl-tab active" data-tab="dims">Измерения и Фильтры</button>
+        <button type="button" class="etl-tab" data-tab="measures">Меры и Вычисления</button>
+        <button type="button" class="etl-tab" data-tab="toggles">Переключатели</button>
+      </nav>
+      <div class="etl-main-scroll">
+        <div id="tab-dims">
+          <table class="schema-table">
+            <thead><tr><th>Поле</th><th>Роль</th><th>Виджет / Фильтр</th><th>Формат</th><th>Превью</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><strong>Месяц</strong></td>
+                <td><select><option>Дата</option></select></td>
+                <td><select><option>Двойной степпер</option></select></td>
+                <td><select><option>Дата</option></select></td>
+                <td>
+                  <div class="preview-box">
+                    <div class="stepper-row"><button type="button">‹</button><span class="stepper-val">2024.02</span><button type="button">›</button></div>
+                    <div class="stepper-row"><button type="button">‹</button><span class="stepper-val">2024.01</span><button type="button">›</button></div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Регион</strong></td>
+                <td><select><option>Фильтр</option></select></td>
+                <td><select><option>Мультиселект</option></select></td>
+                <td><select><option>Авто</option></select></td>
+                <td>
+                  <div class="preview-multi">
+                    <div class="multi-toolbar">
+                      <input class="multi-search" placeholder="Поиск…" />
+                      <button type="button" class="multi-reset" title="Сбросить">↺</button>
+                    </div>
+                    <div class="multi-list">
+                      <label class="multi-opt on"><input type="checkbox" checked /> Север</label>
+                      <label class="multi-opt"><input type="checkbox" /> Юг</label>
+                      <label class="multi-opt"><input type="checkbox" /> Запад</label>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Показатель</strong></td>
+                <td><select><option>Измерение</option></select></td>
+                <td><select><option>Выпадающий список</option></select></td>
+                <td><select><option>Текст</option></select></td>
+                <td><select><option>Выручка</option><option>Маржа</option></select></td>
+              </tr>
+              <tr>
+                <td><strong>Сумма_без_НДС</strong></td>
+                <td><select><option>Мера</option></select></td>
+                <td><select><option>Нет</option></select></td>
+                <td><select><option>Число</option></select></td>
+                <td><span class="empty-hint" style="padding:0">—</span></td>
+              </tr>
+              <tr>
+                <td><strong>План</strong></td>
+                <td><select><option>Мера</option></select></td>
+                <td><select><option>Двойной слайдер</option></select></td>
+                <td><select><option>Целое</option></select></td>
+                <td>
+                  <div class="preview-slider">
+                    <span>200 — 1400</span>
+                    <input type="range" min="200" max="1400" value="200" />
+                    <input type="range" min="200" max="1400" value="1400" />
+                  </div>
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Флаг</strong></td>
+                <td><select><option>Фильтр</option></select></td>
+                <td><select><option>Переключатель</option></select></td>
+                <td><select><option>Авто</option></select></td>
+                <td>
+                  <div class="preview-toggle">
+                    <button type="button" class="on">Выкл</button>
+                    <button type="button">Вкл</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div id="tab-measures" class="hidden">
+          <div class="measures-layout">
+            <aside class="var-pool">
+              <h3 class="var-section">Измерения</h3>
+              <button type="button" class="var-chip dim" draggable="true" data-field="Показатель">Показатель</button>
+              <button type="button" class="var-chip dim" draggable="true" data-field="Регион">Регион</button>
+              <button type="button" class="var-chip dim" draggable="true" data-field="Месяц">Месяц</button>
+              <h3 class="var-section" style="margin-top:12px">Меры</h3>
+              <button type="button" class="var-chip meas" draggable="true" data-field="Сумма_без_НДС">Сумма_без_НДС</button>
+              <button type="button" class="var-chip meas" draggable="true" data-field="Сумма_с_НДС">Сумма_с_НДС</button>
+              <button type="button" class="var-chip meas" draggable="true" data-field="План">План</button>
+            </aside>
+            <div>
+              <div class="formula-templates">
+                <button type="button" class="formula-tpl" data-kind="growth_contrib"><strong>Вклад</strong><span>(A − B) / ΣB × 100</span></button>
+                <button type="button" class="formula-tpl" data-kind="growth"><strong>Прирост</strong><span>(A − B) / B × 100</span></button>
+                <button type="button" class="formula-tpl" data-kind="delta"><strong>Разница</strong><span>A − B</span></button>
+                <button type="button" class="formula-tpl" data-kind="share"><strong>Доля</strong><span>A / ΣA × 100</span></button>
+                <button type="button" class="formula-tpl" data-kind="sum"><strong>SUM</strong><span>SUM(A)</span></button>
+                <button type="button" class="formula-tpl" data-kind="avg"><strong>AVG</strong><span>AVG(A)</span></button>
+                <button type="button" class="formula-tpl" data-kind="count"><strong>COUNT</strong><span>COUNT(A)</span></button>
+                <button type="button" class="formula-tpl" data-kind="count_distinct"><strong>COUNT DISTINCT</strong><span>COUNT DISTINCT(A)</span></button>
+                <button type="button" class="formula-tpl" data-kind="if"><strong>IF</strong><span>IF(cond, then, else)</span></button>
+                <button type="button" class="formula-tpl" data-kind="switch"><strong>SWITCH</strong><span>SWITCH(A, …)</span></button>
+              </div>
+              <div id="calcList"></div>
+              <p class="empty-hint" id="calcEmpty">Выберите шаблон формулы или перетащите поля в слоты</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="tab-toggles" class="hidden">
+          <div class="toggle-groups">
+            <p class="empty-hint" style="text-align:left;padding:0 0 8px">Именованные группы: метка кнопки → поле меры (например «Без НДС» / «С НДС»).</p>
+            <button type="button" class="btn" id="btnAddToggle">+ Группа переключателей</button>
+            <div class="toggle-group">
+              <div class="case-row">
+                <input value="НДС" />
+                <button type="button" class="btn ghost">Удалить группу</button>
+              </div>
+              <div class="toggle-state-row">
+                <input value="Без НДС" />
+                <select><option>Сумма_без_НДС</option><option>Сумма_с_НДС</option></select>
+                <button type="button" class="btn ghost">×</button>
+              </div>
+              <div class="toggle-state-row">
+                <input value="С НДС" />
+                <select><option>Сумма_с_НДС</option><option>Сумма_без_НДС</option></select>
+                <button type="button" class="btn ghost">×</button>
+              </div>
+              <button type="button" class="btn" style="margin-top:8px">+ вариант</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <footer class="etl-footer">
+        <button type="button" class="btn" id="btnBack">Назад</button>
+        <button type="button" class="btn primary" id="btnFinish">Завершить настройку</button>
+      </footer>
+    </div>
+  </div>
+</div>
+<script>
+  const step1 = document.getElementById('step1');
+  const step2 = document.getElementById('step2');
+  const ind = document.getElementById('stepIndicator');
+  document.getElementById('btnNext').onclick = () => {
+    step1.classList.add('hidden');
+    step2.classList.remove('hidden');
+    step2.style.display = 'flex';
+    ind.textContent = 'Шаг 2 из 2: Настройка схемы';
+  };
+  document.getElementById('btnBack').onclick = () => {
+    step2.classList.add('hidden');
+    step2.style.display = 'none';
+    step1.classList.remove('hidden');
+    ind.textContent = 'Шаг 1 из 2: Типы данных';
+  };
+  document.querySelectorAll('.etl-tab').forEach((tab) => {
+    tab.onclick = () => {
+      document.querySelectorAll('.etl-tab').forEach((t) => t.classList.remove('active'));
+      tab.classList.add('active');
+      ['dims','measures','toggles'].forEach((id) => {
+        document.getElementById('tab-' + id).classList.toggle('hidden', tab.dataset.tab !== id);
+      });
+    };
+  });
+  document.querySelectorAll('.preview-toggle').forEach((box) => {
+    box.querySelectorAll('button').forEach((b) => {
+      b.onclick = () => {
+        box.querySelectorAll('button').forEach((x) => x.classList.remove('on'));
+        b.classList.add('on');
+      };
+    });
+  });
+  document.querySelectorAll('.multi-reset').forEach((btn) => {
+    btn.onclick = () => {
+      const list = btn.closest('.preview-multi').querySelector('.multi-list');
+      list.querySelectorAll('input').forEach((i) => { i.checked = false; i.closest('label').classList.remove('on'); });
+      const search = btn.closest('.preview-multi').querySelector('.multi-search');
+      if (search) search.value = '';
+    };
+  });
+  document.querySelectorAll('.multi-search').forEach((input) => {
+    input.oninput = () => {
+      const q = input.value.toLowerCase();
+      input.closest('.preview-multi').querySelectorAll('.multi-opt').forEach((opt) => {
+        opt.style.display = opt.textContent.toLowerCase().includes(q) ? '' : 'none';
+      });
+    };
+  });
+
+  // DnD for calc slots
+  let dragField = '';
+  document.querySelectorAll('.var-chip').forEach((chip) => {
+    chip.addEventListener('dragstart', (e) => {
+      dragField = chip.dataset.field;
+      e.dataTransfer.setData('text/etl-field', dragField);
+    });
+  });
+
+  const calcList = document.getElementById('calcList');
+  const calcEmpty = document.getElementById('calcEmpty');
+  function bindSlots(root) {
+    root.querySelectorAll('.calc-slot').forEach((slot) => {
+      slot.addEventListener('dragover', (e) => { e.preventDefault(); slot.classList.add('drag-over'); });
+      slot.addEventListener('dragleave', () => slot.classList.remove('drag-over'));
+      slot.addEventListener('drop', (e) => {
+        e.preventDefault();
+        slot.classList.remove('drag-over');
+        const f = e.dataTransfer.getData('text/etl-field') || dragField;
+        if (!f) return;
+        slot.textContent = f;
+        slot.classList.add('filled');
+      });
+    });
+  }
+  document.querySelectorAll('.formula-tpl').forEach((tpl) => {
+    tpl.onclick = () => {
+      calcEmpty.classList.add('hidden');
+      const kind = tpl.dataset.kind;
+      const block = document.createElement('div');
+      block.className = 'calc-block';
+      let slots = '';
+      if (['growth_contrib','growth','delta'].includes(kind)) {
+        slots = `<div class="calc-slots"><div class="calc-slot" data-slot="A">A</div><span>${kind==='delta'?'−':'vs'}</span><div class="calc-slot" data-slot="B">B</div><span style="color:var(--text-secondary);font-size:12px">${tpl.querySelector('span').textContent}</span></div>`;
+      } else if (['sum','avg','count','count_distinct','share'].includes(kind)) {
+        slots = `<div class="calc-slots"><span>${tpl.querySelector('strong').textContent}(</span><div class="calc-slot" data-slot="A">поле</div><span>)</span></div>`;
+      } else if (kind === 'if') {
+        slots = `<div class="calc-slots"><span>IF</span><div class="calc-slot">поле</div><select><option>between</option><option>=</option><option>≠</option></select><input type="number" value="0" style="width:72px"/><span>и</span><input type="number" value="100" style="width:72px"/></div><div class="case-row"><span>then</span><input value="1"/><span>else</span><input value="0"/></div>`;
+      } else if (kind === 'switch') {
+        slots = `<div class="calc-slots"><span>SWITCH</span><div class="calc-slot">поле</div></div><div class="case-row"><input placeholder="когда"/><span>→</span><input placeholder="результат"/><button type="button" class="btn ghost">×</button></div><div class="case-row"><button type="button" class="btn btn-add-case">+ case</button><span>default</span><input/></div>`;
+      }
+      block.innerHTML = `<div class="calc-block-head"><input value="${kind}_1"/><strong style="font-size:12px;color:var(--text-secondary)">${tpl.querySelector('strong').textContent}</strong><button type="button" class="btn ghost btn-rm">×</button></div>${slots}`;
+      calcList.appendChild(block);
+      bindSlots(block);
+      block.querySelector('.btn-rm').onclick = () => {
+        block.remove();
+        if (!calcList.children.length) calcEmpty.classList.remove('hidden');
+      };
+      const addCase = block.querySelector('.btn-add-case');
+      if (addCase) {
+        addCase.onclick = () => {
+          const row = document.createElement('div');
+          row.className = 'case-row';
+          row.innerHTML = `<input placeholder="когда"/><span>→</span><input placeholder="результат"/><button type="button" class="btn ghost">×</button>`;
+          row.querySelector('button').onclick = () => row.remove();
+          addCase.parentElement.before(row);
+        };
+      }
+    };
+  });
+</script>
+</body>
+</html>

@@ -72,7 +72,19 @@ ok(
     etlModal.includes('Завершить настройку') &&
     etlModal.includes('Измерения и Фильтры') &&
     etlModal.includes('Меры и Вычисления') &&
-    etlModal.includes('Переключатели'),
+    etlModal.includes('Переключатели') &&
+    etlModal.includes('ETL Конструктор') &&
+    etlModal.includes('step-indicator') &&
+    etlModal.includes('file-item') &&
+    etlModal.includes('calc-slot') &&
+    etlModal.includes('formula-tpl'),
+);
+ok(
+  'ETL Flat Design mock HTML reference',
+  fs.existsSync(path.join(root, 'docs/etl-constructor-flat.html')) &&
+    fs.readFileSync(path.join(root, 'docs/etl-constructor-flat.html'), 'utf8').includes(
+      'ETL Конструктор — Flat Design',
+    ),
 );
 ok(
   'ETL filter widgets + formula templates',

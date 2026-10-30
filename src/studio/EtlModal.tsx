@@ -45,17 +45,17 @@ const DELIM_OPTIONS: { id: CsvDelimiter; label: string }[] = [
   { id: '\t', label: 'Tab' },
 ];
 
-const MEASURE_TEMPLATES: CalcExprKind[] = [
-  'growth_contrib',
-  'growth',
-  'delta',
-  'share',
-  'sum',
-  'avg',
-  'count',
-  'count_distinct',
-  'if',
-  'switch',
+const MEASURE_TEMPLATES: { kind: CalcExprKind; title: string; formula: string }[] = [
+  { kind: 'growth_contrib', title: 'Вклад', formula: '(A − B) / ΣB × 100' },
+  { kind: 'growth', title: 'Прирост', formula: '(A − B) / B × 100' },
+  { kind: 'delta', title: 'Разница', formula: 'A − B' },
+  { kind: 'share', title: 'Доля', formula: 'A / ΣA × 100' },
+  { kind: 'sum', title: 'SUM', formula: 'SUM(A)' },
+  { kind: 'avg', title: 'AVG', formula: 'AVG(A)' },
+  { kind: 'count', title: 'COUNT', formula: 'COUNT(A)' },
+  { kind: 'count_distinct', title: 'COUNT DISTINCT', formula: 'COUNT DISTINCT(A)' },
+  { kind: 'if', title: 'IF', formula: 'IF(cond, then, else)' },
+  { kind: 'switch', title: 'SWITCH', formula: 'SWITCH(A, …)' },
 ];
 
 type WizardStep = 1 | 2;
@@ -100,24 +100,37 @@ function FieldPreview({
   const [range, setRange] = useState<[number, number]>([min, max]);
 
   if (widget === 'none') {
-    return <span className="etl-empty" style={{ padding: 0 }}>—</span>;
+    return <span className="empty-hint" style={{ padding: 0 }}>—</span>;
   }
 
   if (widget === 'multi') {
     const filtered = values.filter((v) => v.toLowerCase().includes(q.toLowerCase()));
     return (
-      <div className="etl-preview">
-        <input
-          className="etl-preview-search"
-          placeholder="Поиск…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <div className="etl-multi-list">
+      <div className="preview-multi">
+        <div className="multi-toolbar">
+          <input
+            className="multi-search"
+            placeholder="Поиск…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          <button
+            type="button"
+            className="multi-reset"
+            title="Сбросить"
+            onClick={() => {
+              setPicked([]);
+              setQ('');
+            }}
+          >
+            ↺
+          </button>
+        </div>
+        <div className="multi-list">
           {filtered.map((v) => {
             const on = picked.includes(v);
             return (
-              <label key={v} className={`etl-multi-opt${on ? ' on' : ''}`}>
+              <label key={v} className={`multi-opt${on ? ' on' : ''}`}>
                 <input
                   type="checkbox"
                   checked={on}
@@ -131,7 +144,7 @@ function FieldPreview({
               </label>
             );
           })}
-          {!filtered.length && <span className="etl-empty">Нет значений</span>}
+          {!filtered.length && <span className="empty-hint" style={{ padding: 8 }}>Нет значений</span>}
         </div>
       </div>
     );
@@ -151,16 +164,18 @@ function FieldPreview({
 
   if (widget === 'stepper' || widget === 'double_stepper') {
     const list = weeks.length ? weeks : values;
-    if (!list.length) return <span className="etl-empty">Нет значений</span>;
+    if (!list.length) return <span className="empty-hint" style={{ padding: 0 }}>Нет значений</span>;
     const idx = Math.min(weekIdx, list.length - 1);
     const label = weeks.length ? formatWeekLabel(list[idx]) : list[idx];
+    const idx2 = Math.min(weekIdx2, list.length - 1);
+    const label2 = weeks.length ? formatWeekLabel(list[idx2]) : list[idx2];
     return (
-      <div className="etl-preview">
-        <div className="etl-stepper-row">
+      <div className="preview-box">
+        <div className="stepper-row">
           <button type="button" onClick={() => setWeekIdx((i) => Math.max(0, i - 1))}>
             ‹
           </button>
-          <span className="val">{label}</span>
+          <span className="stepper-val">{label}</span>
           <button
             type="button"
             onClick={() => setWeekIdx((i) => Math.min(list.length - 1, i + 1))}
@@ -169,15 +184,11 @@ function FieldPreview({
           </button>
         </div>
         {widget === 'double_stepper' && (
-          <div className="etl-stepper-row">
+          <div className="stepper-row">
             <button type="button" onClick={() => setWeekIdx2((i) => Math.max(0, i - 1))}>
               ‹
             </button>
-            <span className="val">
-              {weeks.length
-                ? formatWeekLabel(list[Math.min(weekIdx2, list.length - 1)])
-                : list[Math.min(weekIdx2, list.length - 1)]}
-            </span>
+            <span className="stepper-val">{label2}</span>
             <button
               type="button"
               onClick={() => setWeekIdx2((i) => Math.min(list.length - 1, i + 1))}
@@ -194,7 +205,7 @@ function FieldPreview({
     const a = values[0] || 'Выкл';
     const b = values[1] || 'Вкл';
     return (
-      <div className="etl-toggle-preview">
+      <div className="preview-toggle">
         <button type="button" className={!toggleOn ? 'on' : ''} onClick={() => setToggleOn(false)}>
           {a}
         </button>
@@ -207,7 +218,7 @@ function FieldPreview({
 
   if (widget === 'slider_double') {
     return (
-      <div className="etl-slider-preview">
+      <div className="preview-slider">
         <span>
           {range[0]} — {range[1]}
         </span>
@@ -244,7 +255,7 @@ function DropSlot({
   const [over, setOver] = useState(false);
   return (
     <div
-      className={`etl-slot${value ? ' filled' : ''}${over ? ' over' : ''}`}
+      className={`calc-slot${value ? ' filled' : ''}${over ? ' drag-over' : ''}`}
       onDragOver={(e) => {
         e.preventDefault();
         setOver(true);
@@ -428,7 +439,7 @@ export function EtlModal({ onClose }: Props) {
             ? 'dolya_pct'
             : kind === 'delta'
               ? 'raznica'
-              : kind;
+              : String(kind);
     let name = nameBase;
     let i = 2;
     const existing = new Set([...(ds?.columns || []), ...calcs.map((c) => c.name)]);
@@ -439,8 +450,9 @@ export function EtlModal({ onClose }: Props) {
       id: uid('calc'),
       name,
       kind,
-      a: measureFields[0] || dimFields[0] || '',
-      b: measureFields[1] || measureFields[0] || '',
+      // Leave slots empty for Flat Design DnD parity (drag from var-pool).
+      a: '',
+      b: '',
       op: kind === 'if' ? 'between' : undefined,
       value: kind === 'if' ? 0 : undefined,
       value2: kind === 'if' ? 100 : undefined,
@@ -479,16 +491,16 @@ export function EtlModal({ onClose }: Props) {
   };
 
   return (
-    <div className="etl-wiz-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="etl-wiz" onClick={(e) => e.stopPropagation()}>
-        <div className="etl-wiz-head">
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <h2>Данные / ETL</h2>
-            <span className="etl-wiz-step-badge">
+    <div className="etl-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="etl-modal" onClick={(e) => e.stopPropagation()}>
+        <header className="etl-header">
+          <div className="etl-header-left">
+            <h2 className="etl-title">ETL Конструктор</h2>
+            <span className="step-indicator">
               Шаг {step} из 2: {step === 1 ? 'Типы данных' : 'Настройка схемы'}
             </span>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div className="etl-header-actions">
             <button
               type="button"
               className="btn"
@@ -497,33 +509,35 @@ export function EtlModal({ onClose }: Props) {
             >
               {refreshing ? 'Обновление…' : 'Обновить данные'}
             </button>
-            <button type="button" className="btn ghost" onClick={onClose}>
-              Закрыть
+            <button type="button" className="etl-close" title="Закрыть" aria-label="Закрыть" onClick={onClose}>
+              ×
             </button>
           </div>
-        </div>
+        </header>
 
         {step === 1 ? (
-          <div className="etl-wiz-body">
-            <aside className="etl-wiz-side">
-              <h3>Источники</h3>
-              <ul className="etl-source-list">
+          <div className="etl-body">
+            <aside className="etl-sidebar">
+              <h3 className="sidebar-title">Источники</h3>
+              <ul className="file-list">
                 {sources.map((s) => (
                   <li key={s.id}>
                     <button
                       type="button"
-                      className={`etl-source-item${(activeSource?.id || '') === s.id ? ' active' : ''}`}
+                      className={`file-item${(activeSource?.id || '') === s.id ? ' active' : ''}`}
                       onClick={() => setActiveSourceId(s.id)}
                     >
-                      <strong>
+                      <span className="file-name">
                         {s.type === 'csv' ? 'CSV' : 'SQL'}: {s.name}
-                      </strong>
-                      <span className="meta">
-                        {s.type === 'csv' ? (s as SourceCsv).fileName : `${s.server}/${s.database}`}
+                      </span>
+                      <span className="file-meta">
+                        {s.type === 'csv'
+                          ? `${(s as SourceCsv).fileName} · ${(s as SourceCsv).delimiter || 'auto'}`
+                          : `${s.server}/${s.database}`}
                       </span>
                     </button>
                     {s.type === 'csv' && (activeSource?.id || '') === s.id && (
-                      <div className="etl-delim-row">
+                      <div className="delim-row">
                         Разделитель
                         <select
                           value={(s as SourceCsv).delimiter || 'auto'}
@@ -550,10 +564,10 @@ export function EtlModal({ onClose }: Props) {
                     )}
                   </li>
                 ))}
-                {!sources.length && <li className="etl-empty">Загрузите CSV или SQL</li>}
+                {!sources.length && <li className="empty-hint">Загрузите CSV или SQL</li>}
               </ul>
 
-              <div className="etl-delim-row">
+              <div className="delim-row">
                 Для новых файлов
                 <select
                   value={csvDelim}
@@ -567,27 +581,25 @@ export function EtlModal({ onClose }: Props) {
                 </select>
               </div>
 
-              <div className="etl-side-actions">
-                <button type="button" className="btn" onClick={() => csvRef.current?.click()}>
+              <div className="source-actions">
+                <button type="button" className="btn btn-source" onClick={() => csvRef.current?.click()}>
                   + CSV
                 </button>
                 <button
                   type="button"
-                  className="btn"
+                  className="btn btn-source is-disabled"
                   disabled
                   title="Excel пока не поддерживается — сохраните лист как CSV (;)"
                 >
                   + XLSX
                 </button>
-                <span className="etl-empty" style={{ padding: 0, fontSize: 11 }}>
-                  пока только CSV
-                </span>
-                <button type="button" className="btn" onClick={() => setShowSql((v) => !v)}>
+                <div className="hint-xlsx">пока только CSV</div>
+                <button type="button" className="btn btn-source" onClick={() => setShowSql((v) => !v)}>
                   + SQL
                 </button>
                 <button
                   type="button"
-                  className="btn ghost"
+                  className="btn btn-source ghost"
                   title="Демо: semicolon RU CSV"
                   onClick={() => void loadSemicolonDemo()}
                 >
@@ -654,15 +666,15 @@ export function EtlModal({ onClose }: Props) {
               )}
             </aside>
 
-            <div className="etl-wiz-main">
-              <div className="etl-wiz-main-scroll">
+            <div className="etl-main">
+              <div className="etl-main-scroll">
                 {!ds ? (
-                  <p className="etl-empty">
+                  <p className="empty-hint">
                     Загрузите источник с разделителем «;» для RU/Excel CSV, затем данные появятся
                     здесь.
                   </p>
                 ) : (
-                  <table className="etl-table">
+                  <table className="schema-table">
                     <thead>
                       <tr>
                         <th>Поле</th>
@@ -680,17 +692,18 @@ export function EtlModal({ onClose }: Props) {
                               <strong>{col}</strong>
                             </td>
                             <td>
-                              <div className="etl-chips">
+                              <div className="sample-chips">
                                 {samples.map((s) => (
-                                  <span key={s} className="etl-chip" title={s}>
+                                  <span key={s} className="chip" title={s}>
                                     {s}
                                   </span>
                                 ))}
-                                {!samples.length && <span className="etl-chip">—</span>}
+                                {!samples.length && <span className="chip">—</span>}
                               </div>
                             </td>
                             <td>
                               <select
+                                className="type-select"
                                 value={cfg?.dataType || 'String'}
                                 onChange={(e) =>
                                   setSchema((prev) =>
@@ -714,8 +727,8 @@ export function EtlModal({ onClose }: Props) {
                   </table>
                 )}
               </div>
-              <div className="etl-wiz-foot">
-                <span className="etl-empty" style={{ padding: 0 }}>
+              <footer className="etl-footer">
+                <span className="etl-footer-meta">
                   {ds
                     ? `${ds.rows.length} строк · ${ds.columns.length} колонок`
                     : 'Нет датасета'}
@@ -728,12 +741,12 @@ export function EtlModal({ onClose }: Props) {
                 >
                   Далее: Настройка схемы
                 </button>
-              </div>
+              </footer>
             </div>
           </div>
         ) : (
-          <>
-            <div className="etl-tabs">
+          <div className="etl-step2">
+            <nav className="etl-tabs">
               {(
                 [
                   ['dims', 'Измерения и Фильтры'],
@@ -750,11 +763,11 @@ export function EtlModal({ onClose }: Props) {
                   {label}
                 </button>
               ))}
-            </div>
+            </nav>
 
-            <div className="etl-wiz-main-scroll">
+            <div className="etl-main-scroll">
               {tab === 'dims' && ds && (
-                <table className="etl-table">
+                <table className="schema-table">
                   <thead>
                     <tr>
                       <th>Поле</th>
@@ -843,26 +856,28 @@ export function EtlModal({ onClose }: Props) {
               )}
 
               {tab === 'measures' && ds && (
-                <div className="etl-measures-layout">
-                  <aside className="etl-var-pool">
-                    <h4>Измерения</h4>
+                <div className="measures-layout">
+                  <aside className="var-pool">
+                    <h4 className="var-section">Измерения</h4>
                     {dimFields.map((f) => (
                       <button
                         key={f}
                         type="button"
-                        className="etl-var-chip dim"
+                        className="var-chip dim"
                         draggable
                         onDragStart={(e) => e.dataTransfer.setData('text/etl-field', f)}
                       >
                         {f}
                       </button>
                     ))}
-                    <h4 style={{ marginTop: 12 }}>Меры</h4>
+                    <h4 className="var-section" style={{ marginTop: 12 }}>
+                      Меры
+                    </h4>
                     {measureFields.map((f) => (
                       <button
                         key={f}
                         type="button"
-                        className="etl-var-chip meas"
+                        className="var-chip meas"
                         draggable
                         onDragStart={(e) => e.dataTransfer.setData('text/etl-field', f)}
                       >
@@ -870,34 +885,34 @@ export function EtlModal({ onClose }: Props) {
                       </button>
                     ))}
                     {!dimFields.length && !measureFields.length && (
-                      <p className="etl-empty">Задайте роли на вкладке «Измерения»</p>
+                      <p className="empty-hint">Задайте роли на вкладке «Измерения»</p>
                     )}
                   </aside>
 
                   <div>
-                    <div className="etl-templates">
-                      {MEASURE_TEMPLATES.map((kind) => (
+                    <div className="formula-templates">
+                      {MEASURE_TEMPLATES.map((tpl) => (
                         <button
-                          key={kind}
+                          key={tpl.kind}
                           type="button"
-                          className="etl-template-btn"
-                          onClick={() => addCalcTemplate(kind)}
+                          className="formula-tpl"
+                          onClick={() => addCalcTemplate(tpl.kind)}
                         >
-                          <strong>{CALC_KIND_LABELS[kind]}</strong>
-                          <span>{CALC_KIND_FORMULA[kind] || ''}</span>
+                          <strong>{tpl.title}</strong>
+                          <span>{tpl.formula}</span>
                         </button>
                       ))}
                     </div>
 
                     {calcs.map((calc) => (
-                      <div key={calc.id} className="etl-formula-card">
-                        <header>
+                      <div key={calc.id} className="calc-block">
+                        <div className="calc-block-head">
                           <input
                             value={calc.name}
                             onChange={(e) => patchCalc(calc.id, { name: e.target.value })}
                             placeholder="Имя поля"
                           />
-                          <strong style={{ fontSize: 12, color: 'var(--etl-muted)' }}>
+                          <strong style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                             {CALC_KIND_LABELS[calc.kind]}
                           </strong>
                           <button
@@ -907,14 +922,14 @@ export function EtlModal({ onClose }: Props) {
                           >
                             ×
                           </button>
-                        </header>
+                        </div>
 
                         {(calc.kind === 'growth' ||
                           calc.kind === 'growth_contrib' ||
                           calc.kind === 'delta' ||
                           calc.kind === 'ratio' ||
                           calc.kind === 'pct') && (
-                          <div className="etl-slots">
+                          <div className="calc-slots">
                             <DropSlot
                               label="A"
                               value={calc.a}
@@ -932,7 +947,7 @@ export function EtlModal({ onClose }: Props) {
                               value={calc.b}
                               onDropField={(f) => patchCalc(calc.id, { b: f })}
                             />
-                            <span style={{ color: 'var(--etl-muted)', fontSize: 12 }}>
+                            <span style={{ color: 'var(--text-secondary)', fontSize: 12 }}>
                               {CALC_KIND_FORMULA[calc.kind]}
                             </span>
                           </div>
@@ -943,7 +958,7 @@ export function EtlModal({ onClose }: Props) {
                           calc.kind === 'count' ||
                           calc.kind === 'count_distinct' ||
                           calc.kind === 'share') && (
-                          <div className="etl-slots">
+                          <div className="calc-slots">
                             <span>{CALC_KIND_LABELS[calc.kind]}(</span>
                             <DropSlot
                               label="поле"
@@ -956,7 +971,7 @@ export function EtlModal({ onClose }: Props) {
 
                         {calc.kind === 'if' && (
                           <div>
-                            <div className="etl-slots">
+                            <div className="calc-slots">
                               <span>IF</span>
                               <DropSlot
                                 label="поле"
@@ -1007,7 +1022,7 @@ export function EtlModal({ onClose }: Props) {
                                 />
                               )}
                             </div>
-                            <div className="etl-case-row">
+                            <div className="case-row">
                               <span>then</span>
                               <input
                                 value={String(calc.thenValue ?? '')}
@@ -1024,7 +1039,7 @@ export function EtlModal({ onClose }: Props) {
 
                         {calc.kind === 'switch' && (
                           <div>
-                            <div className="etl-slots">
+                            <div className="calc-slots">
                               <span>SWITCH</span>
                               <DropSlot
                                 label="поле"
@@ -1033,7 +1048,7 @@ export function EtlModal({ onClose }: Props) {
                               />
                             </div>
                             {(calc.cases || []).map((c) => (
-                              <div key={c.id} className="etl-case-row">
+                              <div key={c.id} className="case-row">
                                 <input
                                   placeholder="когда"
                                   value={c.match}
@@ -1070,7 +1085,7 @@ export function EtlModal({ onClose }: Props) {
                                 </button>
                               </div>
                             ))}
-                            <div className="etl-case-row">
+                            <div className="case-row">
                               <button
                                 type="button"
                                 className="btn"
@@ -1098,23 +1113,23 @@ export function EtlModal({ onClose }: Props) {
                       </div>
                     ))}
                     {!calcs.length && (
-                      <p className="etl-empty">Выберите шаблон формулы или перетащите поля в слоты</p>
+                      <p className="empty-hint">Выберите шаблон формулы или перетащите поля в слоты</p>
                     )}
                   </div>
                 </div>
               )}
 
               {tab === 'toggles' && (
-                <div className="etl-toggle-groups">
-                  <p className="etl-empty" style={{ textAlign: 'left', padding: '0 0 8px' }}>
+                <div className="toggle-groups">
+                  <p className="empty-hint" style={{ textAlign: 'left', padding: '0 0 8px' }}>
                     Именованные группы: метка кнопки → поле меры (например «Без НДС» / «С НДС»).
                   </p>
                   <button type="button" className="btn" onClick={addToggleGroup}>
                     + Группа переключателей
                   </button>
                   {toggles.map((g) => (
-                    <div key={g.id} className="etl-toggle-card">
-                      <div className="etl-case-row">
+                    <div key={g.id} className="toggle-group">
+                      <div className="case-row">
                         <input
                           value={g.name}
                           onChange={(e) =>
@@ -1134,9 +1149,9 @@ export function EtlModal({ onClose }: Props) {
                           Удалить группу
                         </button>
                       </div>
-                      <div className="etl-toggle-opts">
+                      <div className="toggle-opts">
                         {g.options.map((opt) => (
-                          <div key={opt.id} className="etl-toggle-opt-row">
+                          <div key={opt.id} className="toggle-state-row">
                             <input
                               value={opt.label}
                               placeholder="Метка кнопки"
@@ -1236,10 +1251,10 @@ export function EtlModal({ onClose }: Props) {
                 </div>
               )}
 
-              {!ds && <p className="etl-empty">Нет датасета — вернитесь к шагу 1</p>}
+              {!ds && <p className="empty-hint">Нет датасета — вернитесь к шагу 1</p>}
             </div>
 
-            <div className="etl-wiz-foot">
+            <footer className="etl-footer">
               <button type="button" className="btn" onClick={() => setStep(1)}>
                 Назад
               </button>
@@ -1251,8 +1266,8 @@ export function EtlModal({ onClose }: Props) {
               >
                 Завершить настройку
               </button>
-            </div>
-          </>
+            </footer>
+          </div>
         )}
       </div>
     </div>
