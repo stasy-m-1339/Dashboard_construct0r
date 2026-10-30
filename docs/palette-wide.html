@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Палитра</title>
+<style>
+  :root{
+    /* Тёплые — акценты / негатив */
+    --wine-50:#F6EBEB; --wine-100:#EBD5D5; --wine-300:#C88085;
+    --wine-500:#b26164; --wine-700:#8E4B4F; --wine-900:#6E3B3E;
+
+    /* Тёплые — пурпурные / warning */
+    --plum-50:#F2E8EE; --plum-100:#E0CBDA; --plum-300:#B58EA8;
+    --plum-500:#8C5E7B; --plum-700:#643D57; --plum-900:#392232;
+
+    /* Тёплые нейтральные — 6 ступеней */
+    --sand-50:#EDE7DF; --sand-100:#DBD2C8; --sand-200:#D3C8BD;
+    --sand-300:#CBBFB2; --sand-400:#C3B6A7; --sand-500:#bbac9b;
+    --grey-50:#F8F6F5; --grey-100:#F3F1F0; --grey-200:#ECE9E8;
+    --grey-300:#DFDBDA; --grey-400:#D2CDCC; --grey-500:#C4BDBE;
+
+    /* Холодные — позитив / primary */
+    --teal-50:#DCE1DF; --teal-100:#BCCBC8; --teal-300:#98B4B0;
+    --teal-500:#6E9B96; --teal-700:#3F827B; --teal-900:#00665e;
+    --primary:#02665E;
+
+    /* Холодные — информация */
+    --blue-50:#E1E8EF; --blue-100:#C4D3E0; --blue-300:#98B1C7;
+    --blue-500:#6B8DA9; --blue-700:#47698B; --blue-900:#264B6C;
+
+    /* Холодные — пурпурные / iris */
+    --iris-50:#EDEAF3; --iris-100:#D3CCE4; --iris-300:#A29AC0;
+    --iris-500:#746C99; --iris-700:#524A73; --iris-900:#2F2A45;
+
+    /* Роли */
+    --positive:var(--teal-700);
+    --negative:var(--wine-500);
+    --warning:var(--plum-700);
+    --info:var(--blue-700);
+    --plan:var(--sand-500);
+    --forecast:var(--teal-300);
+    --bg:var(--grey-100);
+    --bg-card:#FFFFFF;
+    --text:#2D2A2A;
+    --text-secondary:#685E5F;
+    --text-disabled:#A39C9D;
+    --border:#DFDBDA;
+    --disabled:var(--grey-300);
+    --focus-ring:rgba(2,102,94,.35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 32px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  h1 { font-size: 22px; margin: 0 0 8px; font-weight: 600; }
+  h2 { font-size: 14px; margin: 32px 0 12px; font-weight: 600;
+       text-transform: uppercase; letter-spacing: .08em; color: var(--text-secondary); }
+
+  .hint { margin: -4px 0 12px; font-size: 13px; color: var(--text-secondary); }
+
+  /* Копируемые плашки */
+  [data-hex] {
+    cursor: pointer;
+    transition: transform .1s ease, box-shadow .1s ease, filter .1s ease;
+  }
+  [data-hex]:hover { filter: brightness(1.04); }
+  [data-hex]:active { transform: scale(.97); }
+  [data-hex]:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+
+  /* -------- СВОДНЫЙ ГРАДИЕНТ -------- */
+  .overview {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px 12px;
+  }
+  .overview-bar {
+    height: 44px;
+    border-radius: 8px;
+    background: linear-gradient(to right,
+      var(--plum-700), var(--wine-700), var(--sand-500),
+      var(--grey-400), var(--teal-700), var(--blue-700), var(--iris-700));
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+  }
+  .overview-steps {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .ov-step {
+    flex: 1;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+    border: 0;
+  }
+  .overview-labels {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    margin-top: 8px;
+    gap: 6px;
+  }
+  .overview-labels span {
+    font-size: 10px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    color: var(--text-secondary);
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .overview-labels span b { color: var(--text); font-weight: 700; display: block; }
+
+  /* -------- ГРАДИЕНТЫ СЕМЕЙСТВ -------- */
+  .families {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 12px;
+  }
+  .family {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px 12px;
+    transition: transform .15s ease, box-shadow .15s ease;
+  }
+  .family:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(0,0,0,.08);
+  }
+  .family-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 8px; margin-bottom: 10px;
+  }
+  .family-name { font-weight: 700; font-size: 13px; letter-spacing: .02em; }
+  .family-role { font-size: 11px; color: var(--text-secondary); }
+
+  .family-bar {
+    height: 52px;
+    border-radius: 8px;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+  }
+
+  .steps {
+    display: flex;
+    gap: 4px;
+    margin-top: 8px;
+  }
+  .step-seg {
+    flex: 1;
+    height: 34px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,.06);
+    border: 0;
+  }
+
+  .family-stops {
+    display: flex;
+    margin-top: 8px;
+    gap: 4px;
+  }
+  .stop {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px;
+    line-height: 1.35;
+    color: var(--text-secondary);
+  }
+  .stop .hex { display: block; opacity: .8; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Градиенты по семействам: 50 → 500 (6 стопов) */
+  .bar-wine   { background: linear-gradient(to right, var(--wine-50),   var(--wine-100),   var(--wine-300),   var(--wine-500),   var(--wine-700),   var(--wine-900)); }
+  .bar-plum   { background: linear-gradient(to right, var(--plum-50),   var(--plum-100),   var(--plum-300),   var(--plum-500),   var(--plum-700),   var(--plum-900)); }
+  .bar-sand   { background: linear-gradient(to right, var(--sand-50),   var(--sand-100),   var(--sand-200),   var(--sand-300),   var(--sand-400),   var(--sand-500)); }
+  .bar-grey   { background: linear-gradient(to right, var(--grey-50),   var(--grey-100),   var(--grey-200),   var(--grey-300),   var(--grey-400),   var(--grey-500)); }
+  .bar-teal   { background: linear-gradient(to right, var(--teal-50),   var(--teal-100),   var(--teal-300),   var(--teal-500),   var(--teal-700),   var(--teal-900)); }
+  .bar-blue   { background: linear-gradient(to right, var(--blue-50),   var(--blue-100),   var(--blue-300),   var(--blue-500),   var(--blue-700),   var(--blue-900)); }
+  .bar-iris   { background: linear-gradient(to right, var(--iris-50),   var(--iris-100),   var(--iris-300),   var(--iris-500),   var(--iris-700),   var(--iris-900)); }
+
+  /* -------- СЕМАНТИЧЕСКИЕ РОЛИ -------- */
+  .roles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .role {
+    border-radius: 12px;
+    padding: 16px;
+    color: #fff;
+    min-height: 96px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    border: 1px solid rgba(0,0,0,.05);
+  }
+  .role .label { font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .role .value { font-size: 12px; opacity: .85; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  /* -------- ПРИМЕР -------- */
+  .example {
+    margin-top: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 520px;
+  }
+  .example h3 { margin: 0 0 6px; font-size: 16px; }
+  .example p  { margin: 0 0 12px; color: var(--text-secondary); font-size: 14px; }
+  .btn {
+    background: linear-gradient(180deg, var(--primary) 0%, var(--teal-900) 100%);
+    color: #fff;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 14px;
+    transition: filter .15s;
+  }
+  .btn:hover { filter: brightness(.92); }
+  .btn:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
+  .btn:disabled {
+    background: var(--disabled);
+    color: var(--text-disabled);
+    cursor: not-allowed;
+    filter: none;
+  }
+  .badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-left: 8px;
+  }
+  .badge.pos  { background: var(--positive); color: #fff; }
+  .badge.neg  { background: var(--negative); color: #fff; }
+  .badge.plan { background: var(--plan); color: #fff; }
+  .badge.fc   { background: var(--forecast); color: #fff; }
+  .badge.warn { background: var(--warning); color: #fff; }
+  .badge.info { background: var(--info); color: #fff; }
+
+  /* -------- ТОСТ -------- */
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translate(-50%, 16px);
+    background: #2D2A2A;
+    color: #fff;
+    padding: 10px 14px;
+    border-radius: 10px;
+    font-size: 13px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease, transform .18s ease;
+    z-index: 100;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .toast b { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .toast .dot { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(255,255,255,.35) inset; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+</style>
+</head>
+<body>
+
+  <h1>Палитра дизайн-системы</h1>
+  <p style="color:var(--text-secondary); margin:0 0 8px; font-size:14px;">CSS-переменные, градиенты и ступенчатые переходы · клик по плашке копирует HEX</p>
+
+  <h2>Сводный переход — plum → wine → холодные</h2>
+  <p class="hint">Сверху градиент, ниже — те же опорные цвета разбиты на ступени.</p>
+  <div class="overview">
+    <div class="overview-bar"></div>
+    <div class="overview-steps">
+      <div class="ov-step" data-hex="#643D57" title="Скопировать #643D57" style="background:var(--plum-700); color:#fff;">Plum</div>
+      <div class="ov-step" data-hex="#8E4B4F" title="Скопировать #8E4B4F" style="background:var(--wine-700); color:#fff;">Wine</div>
+      <div class="ov-step" data-hex="#bbac9b" title="Скопировать #bbac9b" style="background:var(--sand-500); color:#2D2A2A;">Sand</div>
+      <div class="ov-step" data-hex="#D2CDCC" title="Скопировать #D2CDCC" style="background:var(--grey-400); color:#2D2A2A;">Grey</div>
+      <div class="ov-step" data-hex="#3F827B" title="Скопировать #3F827B" style="background:var(--teal-700); color:#fff;">Teal</div>
+      <div class="ov-step" data-hex="#47698B" title="Скопировать #47698B" style="background:var(--blue-700); color:#fff;">Blue</div>
+      <div class="ov-step" data-hex="#524A73" title="Скопировать #524A73" style="background:var(--iris-700); color:#fff;">Iris</div>
+    </div>
+    <div class="overview-labels">
+      <span><b>Plum</b>#643D57</span>
+      <span><b>Wine</b>#8E4B4F</span>
+      <span><b>Sand</b>#bbac9b</span>
+      <span><b>Grey</b>#D2CDCC</span>
+      <span><b>Teal</b>#3F827B</span>
+      <span><b>Blue</b>#47698B</span>
+      <span><b>Iris</b>#524A73</span>
+    </div>
+  </div>
+
+  <h2>Семейства — градиент и ступени</h2>
+  <p class="hint">Верхний бар — плавный переход 50 → 500/900, нижний — те же ступени дискретно, с номерами.</p>
+  <div class="families">
+
+    <div class="family">
+      <div class="family-head">
+        <span class="family-name">Plum</span>
+        <span class="family-role">warning · тёплый пурпурный</span>
+      </div>
+      <div class="family-bar bar-plum"></div>
+      <div class="steps">
+        <div class="step-seg" data-hex="#F2E8EE" title="Скопировать #F2E8EE" style="background:var(--plum-50); color:#2D2A2A;">50</div>
+        <div class="step-seg" data-hex="#E0CBDA" title="Скопировать #E0CBDA" style="background:var(--plum-100); color:#2D2A2A;">100</div>
+        <div class="step-seg" data-hex="#B58EA8" title="Скопировать #B58EA8" style="background:var(--plum-300); color:#2D2A2A;">300</div>
+        <div class="step-seg" data-hex="#8C5E7B" title="Скопировать #8C5E7B" style="background:var(--plum-500); color:#fff;">500</div>
+        <div class="step-seg" data-hex="#643D57" title="Скопировать #643D57" style="background:var(--plum-700); color:#fff;">700</div>
+        <div class="step-seg" data-hex="#392232" title="Скопировать #392232" style="background:var(--plum-900); color:#fff;">900</div>
+      </div>
+      <div class="family-stops">
+        <div class="stop"><span class="hex" data-hex="#F2E8EE">#F2E8EE</span></div>
+        <div class="stop"><span class="hex" data-hex="#E0CBDA">#E0CBDA</span></div>
+        <div class="stop"><span class="hex" data-hex="#B58EA8">#B58EA8</span></div>
+        <div class="stop"><span class="hex" data-hex="#8C5E7B">#8C5E7B</span></div>
+        <div class="stop"><span class="hex" data-hex="#643D57">#643D57</span></div>
+        <div class="stop"><span class="hex" data-hex="#392232">#392232</span></div>
+      </div>
+    </div>
+
+    <div class="family">
+      <div class="family-head">
+        <span class="family-name">Wine</span>
+        <span class="family-role">negative · акценты</span>
+      </div>
+      <div class="family-bar bar-wine"></div>
+      <div class="steps">
+        <div class="step-seg" data-hex="#F6EBEB" title="Скопировать #F6EBEB" style="background:var(--wine-50); color:#2D2A2A;">50</div>
+        <div class="step-seg" data-hex="#EBD5D5" title="Скопировать #EBD5D5" style="background:var(--wine-100); color:#2D2A2A;">100</div>
+        <div class="step-seg" data-hex="#C88085" title="Скопировать #C88085" style="background:var(--wine-300); color:#2D2A2A;">300</div>
+        <div class="step-seg" data-hex="#b26164" title="Скопировать #b26164" style="background:var(--wine-500); color:#fff;">500</div>
+        <div class="step-seg" data-hex="#8E4B4F" title="Скопировать #8E4B4F" style="background:var(--wine-700); color:#fff;">700</div>
+        <div class="step-seg" data-hex="#6E3B3E" title="Скопировать #6E3B3E" style="background:var(--wine-900); color:#fff;">900</div>
+      </div>
+      <div class="family-stops">
+        <div class="stop"><span class="hex" data-hex="#F6EBEB">#F6EBEB</span></div>
+        <div class="stop"><span class="hex" data-hex="#EBD5D5">#EBD5D5</span></div>
+        <div class="stop"><span class="hex" data-hex="#C88085">#C88085</span></div>
+        <div class="stop"><span class="hex" data-hex="#b26164">#b26164</span></div>
+        <div class="stop"><span class="hex" data-hex="#8E4B4F">#8E4B4F</span></div>
+        <div class="stop"><span class="hex" data-hex="#6E3B3E">#6E3B3E</span></div>
+      </div>
+    </div>
+
+    <div class="family">
+      <div class="family-head">
+        <span class="family-name">Sand</span>
+        <span class="family-role">plan · тёплый нейтральный</span>
+      </div>
+      <div class="family-bar bar-sand"></div>
+      <div class="steps">
+        <div class="step-seg" data-hex="#EDE7DF" title="Скопировать #EDE7DF" style="background:var(--sand-50); color:#2D2A2A;">50</div>
+        <div class="step-seg" data-hex="#DBD2C8" title="Скопировать #DBD2C8" style="background:var(--sand-100); color:#2D2A2A;">100</div>
+        <div class="step-seg" data-hex="#D3C8BD" title="Скопировать #D3C8BD" style="background:var(--sand-200); color:#2D2A2A;">200</div>
+        <div class="step-seg" data-hex="#CBBFB2" title="Скопировать #CBBFB2" style="background:var(--sand-300); color:#2D2A2A;">300</div>
+        <div class="step-seg" data-hex="#C3B6A7" title="Скопировать #C3B6A7" style="background:var(--sand-400); color:#2D2A2A;">400</div>
+        <div class="step-seg" data-hex="#bbac9b" title="Скопировать #bbac9b" style="background:var(--sand-500); color:#2D2A2A;">500</div>
+      </div>
+      <div class="family-stops">
+        <div class="stop"><span class="hex" data-hex="#EDE7DF">#EDE7DF</span></div>
+        <div class="stop"><span class="hex" data-hex="#DBD2C8">#DBD2C8</span></div>
+        <div class="stop"><span class="hex" data-hex="#D3C8BD">#D3C8BD</span></div>
+        <div class="stop"><span class="hex" data-hex="#CBBFB2">#CBBFB2</span></div>
+        <div class="stop"><span class="hex" data-hex="#C3B6A7">#C3B6A7</span></div>
+        <div class="stop"><span class="hex" data-hex="#bbac9b">#bbac9b</span></div>
+      </div>
+    </div>
+
+    <div class="family">
+      <div class="family-head">
+        <span class="family-name">Grey</span>
+        <span class="family-role">нейтральные</span>
+      </div>
+      <div class="family-bar bar-grey"></div>
+      <div class="steps">
+        <div class="step-seg" data-hex="#F8F6F5" title="Скопировать #F8F6F5" style="background:var(--grey-50); color:#2D2A2A;">50</div>
+        <div class="step-seg" data-hex="#F3F1F0" title="Скопировать #F3F1F0" style="background:var(--grey-100); color:#2D2A2A;">100</div>
+        <div class="step-seg" data-hex="#ECE9E8" title="Скопировать #ECE9E8" style="background:var(--grey-200); color:#2D2A2A;">200</div>
+        <div class="step-seg" data-hex="#DFDBDA" title="Скопировать #DFDBDA" style="background:var(--grey-300); color:#2D2A2A;">300</div>
+        <div class="step-seg" data-hex="#D2CDCC" title="Скопировать #D2CDCC" style="background:var(--grey-400); color:#2D2A2A;">400</div>
+        <div class="step-seg" data-hex="#C4BDBE" title="Скопировать #C4BDBE" style="background:var(--grey-500); color:#2D2A2A;">500</div>
+      </div>
+      <div class="family-stops">
+        <div class="stop"><span class="hex" data-hex="#F8F6F5">#F8F6F5</span></div>
+        <div class="stop"><span class="hex" data-hex="#F3F1F0">#F3F1F0</span></div>
+        <div class="stop"><span class="hex" data-hex="#ECE9E8">#ECE9E8</span></div>
+        <div class="stop"><span class="hex" data-hex="#DFDBDA">#DFDBDA</span></div>
+        <div class="stop"><span class="hex" data-hex="#D2CDCC">#D2CDCC</span></div>
+        <div class="stop"><span class="hex" data-hex="#C4BDBE">#C4BDBE</span></div>
+      </div>
+    </div>
+
+    <div class="family">
+      <div class="family-head">
+        <span class="family-name">Teal</span>
+        <span class="family-role">positive · primary</span>
+      </div>
+      <div class="family-bar bar-teal"></div>
+      <div class="steps">
+        <div class="step-seg" data-hex="#DCE1DF" title="Скопировать #DCE1DF" style="background:var(--teal-50); color:#2D2A2A;">50</div>
+        <div class="step-seg" data-hex="#BCCBC8" title="Скопировать #BCCBC8" style="background:var(--teal-100); color:#2D2A2A;">100</div>
+        <div class="step-seg" data-hex="#98B4B0" title="Скопировать #98B4B0" style="background:var(--teal-300); color:#2D2A2A;">300</div>
+        <div class="step-seg" data-hex="#6E9B96" title="Скопировать #6E9B96" style="background:var(--teal-500); color:#2D2A2A;">500</div>
+        <div class="step-seg" data-hex="#3F827B" title="Скопировать #3F827B" style="background:var(--teal-700); color:#fff;">700</div>
+        <div class="step-seg" data-hex="#00665e" title="Скопировать #00665e" style="background:var(--teal-900); color:#fff;">900</div>
+      </div>
+      <div class="family-stops">
+        <div class="stop"><span class="hex" data-hex="#DCE1DF">#DCE1DF</span></div>
+        <div class="stop"><span class="hex" data-hex="#BCCBC8">#BCCBC8</span></div>
+        <div class="stop"><span class="hex" data-hex="#98B4B0">#98B4B0</span></div>
+        <div class="stop"><span class="hex" data-hex="#6E9B96">#6E9B96</span></div>
+        <div class="stop"><span class="hex" data-hex="#3F827B">#3F827B</span></div>
+        <div class="stop"><span class="hex" data-hex="#00665e">#00665e</span></div>
+      </div>
+    </div>
+
+    <div class="family">
+      <div class="family-head">
+        <span class="family-name">Blue</span>
+        <span class="family-role">info · холодный</span>
+      </div>
+      <div class="family-bar bar-blue"></div>
+      <div class="steps">
+        <div class="step-seg" data-hex="#E1E8EF" title="Скопировать #E1E8EF" style="background:var(--blue-50); color:#2D2A2A;">50</div>
+        <div class="step-seg" data-hex="#C4D3E0" title="Скопировать #C4D3E0" style="background:var(--blue-100); color:#2D2A2A;">100</div>
+        <div class="step-seg" data-hex="#98B1C7" title="Скопировать #98B1C7" style="background:var(--blue-300); color:#2D2A2A;">300</div>
+        <div class="step-seg" data-hex="#6B8DA9" title="Скопировать #6B8DA9" style="background:var(--blue-500); color:#2D2A2A;">500</div>
+        <div class="step-seg" data-hex="#47698B" title="Скопировать #47698B" style="background:var(--blue-700); color:#fff;">700</div>
+        <div class="step-seg" data-hex="#264B6C" title="Скопировать #264B6C" style="background:var(--blue-900); color:#fff;">900</div>
+      </div>
+      <div class="family-stops">
+        <div class="stop"><span class="hex" data-hex="#E1E8EF">#E1E8EF</span></div>
+        <div class="stop"><span class="hex" data-hex="#C4D3E0">#C4D3E0</span></div>
+        <div class="stop"><span class="hex" data-hex="#98B1C7">#98B1C7</span></div>
+        <div class="stop"><span class="hex" data-hex="#6B8DA9">#6B8DA9</span></div>
+        <div class="stop"><span class="hex" data-hex="#47698B">#47698B</span></div>
+        <div class="stop"><span class="hex" data-hex="#264B6C">#264B6C</span></div>
+      </div>
+    </div>
+
+    <div class="family">
+      <div class="family-head">
+        <span class="family-name">Iris</span>
+        <span class="family-role">холодный пурпурный</span>
+      </div>
+      <div class="family-bar bar-iris"></div>
+      <div class="steps">
+        <div class="step-seg" data-hex="#EDEAF3" title="Скопировать #EDEAF3" style="background:var(--iris-50); color:#2D2A2A;">50</div>
+        <div class="step-seg" data-hex="#D3CCE4" title="Скопировать #D3CCE4" style="background:var(--iris-100); color:#2D2A2A;">100</div>
+        <div class="step-seg" data-hex="#A29AC0" title="Скопировать #A29AC0" style="background:var(--iris-300); color:#2D2A2A;">300</div>
+        <div class="step-seg" data-hex="#746C99" title="Скопировать #746C99" style="background:var(--iris-500); color:#fff;">500</div>
+        <div class="step-seg" data-hex="#524A73" title="Скопировать #524A73" style="background:var(--iris-700); color:#fff;">700</div>
+        <div class="step-seg" data-hex="#2F2A45" title="Скопировать #2F2A45" style="background:var(--iris-900); color:#fff;">900</div>
+      </div>
+      <div class="family-stops">
+        <div class="stop"><span class="hex" data-hex="#EDEAF3">#EDEAF3</span></div>
+        <div class="stop"><span class="hex" data-hex="#D3CCE4">#D3CCE4</span></div>
+        <div class="stop"><span class="hex" data-hex="#A29AC0">#A29AC0</span></div>
+        <div class="stop"><span class="hex" data-hex="#746C99">#746C99</span></div>
+        <div class="stop"><span class="hex" data-hex="#524A73">#524A73</span></div>
+        <div class="stop"><span class="hex" data-hex="#2F2A45">#2F2A45</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <h2>Семантические роли</h2>
+  <div class="roles">
+    <div class="role" data-hex="#3F827B" title="Скопировать #3F827B" style="background:var(--positive);"><span class="label">positive</span><span class="value">teal-700 · #3F827B</span></div>
+    <div class="role" data-hex="#b26164" title="Скопировать #b26164" style="background:var(--negative);"><span class="label">negative</span><span class="value">wine-500 · #b26164</span></div>
+    <div class="role" data-hex="#643D57" title="Скопировать #643D57" style="background:var(--warning);"><span class="label">warning</span><span class="value">plum-700 · #643D57</span></div>
+    <div class="role" data-hex="#47698B" title="Скопировать #47698B" style="background:var(--info);"><span class="label">info</span><span class="value">blue-700 · #47698B</span></div>
+    <div class="role" data-hex="#bbac9b" title="Скопировать #bbac9b" style="background:var(--plan);"><span class="label">plan</span><span class="value">sand-500 · #bbac9b</span></div>
+    <div class="role" data-hex="#98B4B0" title="Скопировать #98B4B0" style="background:var(--forecast);"><span class="label">forecast</span><span class="value">teal-300 · #98B4B0</span></div>
+    <div class="role" data-hex="#2D2A2A" title="Скопировать #2D2A2A" style="background:var(--text);"><span class="label">text</span><span class="value">#2D2A2A</span></div>
+    <div class="role" data-hex="#685E5F" title="Скопировать #685E5F" style="background:var(--text-secondary);"><span class="label">text-secondary</span><span class="value">#685E5F</span></div>
+    <div class="role" data-hex="#DFDBDA" title="Скопировать #DFDBDA" style="background:var(--disabled); color:var(--text-disabled);"><span class="label">disabled</span><span class="value" style="color:var(--text-secondary);">grey-300 · #DFDBDA</span></div>
+    <div class="role" data-hex="#FFFFFF" title="Скопировать #FFFFFF" style="background:var(--bg-card); color:var(--text); border:1px solid var(--border);"><span class="label">bg-card</span><span class="value" style="color:var(--text-secondary);">#FFFFFF</span></div>
+  </div>
+
+  <h2>Пример применения</h2>
+  <div class="example">
+    <h3>Отчёт за квартал</h3>
+    <p>Выручка выросла на 12% по сравнению с планом.
+      <span class="badge pos">+12%</span>
+      <span class="badge plan">план</span>
+      <span class="badge fc">прогноз</span>
+      <span class="badge neg">−3%</span>
+      <span class="badge warn">риск</span>
+      <span class="badge info">данные</span>
+    </p>
+    <button class="btn">Подробнее</button>
+    <button class="btn" disabled>Недоступно</button>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <span class="dot" id="toast-dot"></span>
+    <span>Скопировано <b id="toast-hex">#000000</b></span>
+  </div>
+
+  <script>
+    (function () {
+      var toast = document.getElementById('toast');
+      var toastHex = document.getElementById('toast-hex');
+      var toastDot = document.getElementById('toast-dot');
+      var toastTimer = null;
+
+      function showToast(hex) {
+        toastHex.textContent = hex.toUpperCase();
+        toastDot.style.background = hex;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () {
+          toast.classList.remove('show');
+        }, 1600);
+      }
+
+      function copyText(text) {
+        if (navigator.clipboard && window.isSecureContext) {
+          return navigator.clipboard.writeText(text);
+        }
+        return new Promise(function (resolve, reject) {
+          var ta = document.createElement('textarea');
+          ta.value = text;
+          ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed';
+          ta.style.top = '-1000px';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          try {
+            var ok = document.execCommand('copy');
+            document.body.removeChild(ta);
+            ok ? resolve() : reject(new Error('copy failed'));
+          } catch (err) {
+            document.body.removeChild(ta);
+            reject(err);
+          }
+        });
+      }
+
+      document.addEventListener('click', function (e) {
+        var el = e.target.closest('[data-hex]');
+        if (!el) return;
+        var hex = el.getAttribute('data-hex');
+        if (!hex) return;
+        copyText(hex).then(function () {
+          showToast(hex);
+        }).catch(function () {
+          // если буфер недоступен — хотя бы покажем значение
+          showToast(hex);
+        });
+      });
+    })();
+  </script>
+
+</body>
+</html>

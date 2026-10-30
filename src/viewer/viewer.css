@@ -1,0 +1,93 @@
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  background: #f3f1f0;
+  color: #2d2a2a;
+}
+
+:focus-visible {
+  outline: 3px solid rgba(2, 102, 94, 0.35);
+  outline-offset: 2px;
+}
+
+.react-grid-item {
+  height: auto;
+  border-radius: var(--theme-radius, 10px);
+  box-shadow: var(--theme-shadow, none);
+  background: transparent;
+  min-width: 0;
+  min-height: 0;
+}
+
+.react-grid-item > .widget-shell {
+  height: 100%;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: var(--theme-radius, 10px);
+  border-style: solid;
+  border-color: var(--theme-border, #dfdbda);
+  border-width: var(--theme-border-width, 1px);
+  border-top-width: var(--theme-border-top-width, var(--theme-border-width, 1px));
+  border-top-color: var(--theme-border-top-color, var(--theme-border, #dfdbda));
+  background: var(--theme-surface, #fff);
+  color: var(--theme-text, inherit);
+  font-family: var(--theme-font, inherit);
+}
+
+.react-grid-item > .widget-shell.tone-fact {
+  border-top-width: 3px;
+  border-top-color: var(--theme-accent, #02665e);
+}
+
+.react-grid-item > .widget-shell.tone-plan {
+  border-top-width: 3px;
+  border-top-color: #bbac9b;
+}
+
+.react-grid-item .widget-card {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
+.react-grid-item.react-grid-placeholder {
+  border-radius: var(--theme-radius, 10px);
+  background: var(--theme-accent, #02665e) !important;
+  opacity: 0.18;
+  box-shadow: none;
+}
+
+.react-grid-item > .react-resizable-handle {
+  z-index: 3;
+}
+.react-grid-item > .react-resizable-handle-se {
+  right: 2px;
+  bottom: 2px;
+}
+
+.chart-host,
+.chart-slot,
+.chart-host .echarts-for-react,
+.chart-host > div {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0;
+  min-height: 0;
+}
