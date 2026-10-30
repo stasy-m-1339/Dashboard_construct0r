@@ -61,6 +61,11 @@ ok(
   etlModal.includes('+ CSV') && etlModal.includes('+ XLSX') && etlModal.includes('+ SQL'),
 );
 ok(
+  'xlsx dependency for Excel upload',
+  fs.readFileSync(path.join(root, 'package.json'), 'utf8').includes('"xlsx"') &&
+    etlModal.includes("import('xlsx')"),
+);
+ok(
   'ETL wizard 2-step Flat Design',
   etlModal.includes('Шаг') &&
     etlModal.includes('Далее: Настройка схемы') &&

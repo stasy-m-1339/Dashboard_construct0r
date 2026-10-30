@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import * as XLSX from 'xlsx';
 import { useStudioStore } from '../store/useStudioStore';
 import type {
   CalculatedField,
@@ -70,7 +69,9 @@ function uid(prefix = 'id'): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function sheetToCsv(buf: ArrayBuffer): string {
+/** Lazy-load SheetJS only when the user picks an Excel file. */
+async function sheetToCsv(buf: ArrayBuffer): Promise<string> {
+  const XLSX = await import('xlsx');
   const wb = XLSX.read(buf, { type: 'array' });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   return XLSX.utils.sheet_to_csv(sheet, { FS: ';' });
@@ -393,9 +394,17 @@ export function EtlModal({ onClose }: Props) {
   };
 
   const uploadXlsx = async (file: File) => {
-    const buf = await file.arrayBuffer();
-    const csv = sheetToCsv(buf);
-    await ingestText(file.name.replace(/\.xlsx?$/i, ''), file.name, csv, ';');
+    try {
+      const buf = await file.arrayBuffer();
+      const csv = await sheetToCsv(buf);
+      await ingestText(file.name.replace(/\.xlsx?$/i, ''), file.name, csv, ';');
+    } catch (e) {
+      setLastError(
+        e instanceof Error
+          ? `XLSX: ${e.message}`
+          : 'Не удалось прочитать Excel. Проверьте, что пакет xlsx установлен (npm i).',
+      );
+    }
   };
 
   const loadSemicolonDemo = async () => {
