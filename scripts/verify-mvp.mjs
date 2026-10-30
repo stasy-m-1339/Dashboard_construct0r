@@ -57,13 +57,13 @@ const appTsx = fs.readFileSync(path.join(root, 'src/App.tsx'), 'utf8');
 const server = fs.readFileSync(path.join(root, 'server/index.ts'), 'utf8');
 ok('no side DataPanel', !appTsx.includes('DataPanel') && !fs.existsSync(path.join(root, 'src/studio/DataPanel.tsx')));
 ok(
-  'ETL wizard sources CSV/XLSX/SQL',
-  etlModal.includes('+ CSV') && etlModal.includes('+ XLSX') && etlModal.includes('+ SQL'),
-);
-ok(
-  'xlsx dependency for Excel upload',
-  fs.readFileSync(path.join(root, 'package.json'), 'utf8').includes('"xlsx"') &&
-    etlModal.includes("import('xlsx')"),
+  'ETL wizard sources CSV/SQL (no xlsx)',
+  etlModal.includes('+ CSV') &&
+    etlModal.includes('+ SQL') &&
+    etlModal.includes('пока только CSV') &&
+    !etlModal.includes("import('xlsx')") &&
+    !etlModal.includes('from \'xlsx\'') &&
+    !fs.readFileSync(path.join(root, 'package.json'), 'utf8').includes('"xlsx"'),
 );
 ok(
   'ETL wizard 2-step Flat Design',

@@ -69,14 +69,6 @@ function uid(prefix = 'id'): string {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-/** Lazy-load SheetJS only when the user picks an Excel file. */
-async function sheetToCsv(buf: ArrayBuffer): Promise<string> {
-  const XLSX = await import('xlsx');
-  const wb = XLSX.read(buf, { type: 'array' });
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_csv(sheet, { FS: ';' });
-}
-
 /** Live preview widgets for schema table. */
 function FieldPreview({
   dataset,
@@ -287,7 +279,6 @@ export function EtlModal({ onClose }: Props) {
   const replaceDatasetPanelFilters = useStudioStore((s) => s.replaceDatasetPanelFilters);
 
   const csvRef = useRef<HTMLInputElement>(null);
-  const xlsxRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState<WizardStep>(1);
   const [tab, setTab] = useState<SchemaTab>('dims');
@@ -391,20 +382,6 @@ export function EtlModal({ onClose }: Props) {
   const uploadCsv = async (file: File) => {
     const text = await file.text();
     await ingestText(file.name.replace(/\.csv$/i, ''), file.name, text, csvDelim);
-  };
-
-  const uploadXlsx = async (file: File) => {
-    try {
-      const buf = await file.arrayBuffer();
-      const csv = await sheetToCsv(buf);
-      await ingestText(file.name.replace(/\.xlsx?$/i, ''), file.name, csv, ';');
-    } catch (e) {
-      setLastError(
-        e instanceof Error
-          ? `XLSX: ${e.message}`
-          : 'Не удалось прочитать Excel. Проверьте, что пакет xlsx установлен (npm i).',
-      );
-    }
   };
 
   const loadSemicolonDemo = async () => {
@@ -573,7 +550,7 @@ export function EtlModal({ onClose }: Props) {
                     )}
                   </li>
                 ))}
-                {!sources.length && <li className="etl-empty">Загрузите CSV / XLSX / SQL</li>}
+                {!sources.length && <li className="etl-empty">Загрузите CSV или SQL</li>}
               </ul>
 
               <div className="etl-delim-row">
@@ -594,9 +571,17 @@ export function EtlModal({ onClose }: Props) {
                 <button type="button" className="btn" onClick={() => csvRef.current?.click()}>
                   + CSV
                 </button>
-                <button type="button" className="btn" onClick={() => xlsxRef.current?.click()}>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled
+                  title="Excel пока не поддерживается — сохраните лист как CSV (;)"
+                >
                   + XLSX
                 </button>
+                <span className="etl-empty" style={{ padding: 0, fontSize: 11 }}>
+                  пока только CSV
+                </span>
                 <button type="button" className="btn" onClick={() => setShowSql((v) => !v)}>
                   + SQL
                 </button>
@@ -616,17 +601,6 @@ export function EtlModal({ onClose }: Props) {
                   onChange={async (e) => {
                     const f = e.target.files?.[0];
                     if (f) await uploadCsv(f);
-                    e.target.value = '';
-                  }}
-                />
-                <input
-                  ref={xlsxRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  hidden
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (f) await uploadXlsx(f);
                     e.target.value = '';
                   }}
                 />
